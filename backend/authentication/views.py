@@ -32,13 +32,24 @@ MAX_INTENTOS_CODIGO = 5
 # ==========================================
 
 def get_tokens_for_user(user):
-    """Genera tokens JWT para un usuario"""
+    """
+    ✅ ACTUALIZADO: Genera tokens JWT con claims personalizados (rol, user_id, email)
+    """
     refresh = RefreshToken.for_user(user)
+    
+    # ✅ NUEVO: Agregar claims personalizados al token
+    refresh['rol'] = user.rol
+    refresh['user_id'] = user.id
+    refresh['email'] = user.email
+    
     return {
         'refresh': str(refresh),
         'access': str(refresh.access_token),
+        # ✅ NUEVO: Incluir datos adicionales en la respuesta
+        'rol': user.rol,
+        'user_id': user.id,
+        'email': user.email,
     }
-
 
 def get_client_ip(request):
     """Obtiene la IP real del cliente"""
@@ -59,7 +70,7 @@ def generar_codigo_recuperacion():
 
 def serializar_usuario_basico(user):
     """
-    ✅ NUEVO: Serializa datos básicos del usuario para respuestas
+    ✅ ACTUALIZADO: Serializa datos básicos incluyendo username
     """
     return {
         'id': user.id,
@@ -67,9 +78,9 @@ def serializar_usuario_basico(user):
         'nombre': user.first_name,
         'apellido': user.last_name,
         'celular': user.celular,
-        'rol': user.rol
+        'rol': user.rol,
+        'username': user.username,
     }
-
 
 # ==========================================
 # AUTENTICACIÓN BÁSICA

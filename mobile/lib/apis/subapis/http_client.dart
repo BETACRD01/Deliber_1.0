@@ -9,13 +9,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../config/api_config.dart';
 import '../helpers/api_exception.dart';
 
-/// Cliente HTTP puro - CON SOPORTE MULTIPART
-/// ✅ VERSIÓN CORREGIDA: Sin reintentos automáticos en multipart
-/// ✅ CON PERSISTENCIA DE ROL DE USUARIO
+/// Cliente HTTP con AUTO-REFRESH INTELIGENTE de tokens
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
   ApiClient._internal();
+
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
@@ -26,31 +25,41 @@ class ApiClient {
       synchronizable: false,
     ),
   );
+
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ VARIABLES DE INSTANCIA (CON ROL Y USER ID)
+  // ✅ NUEVAS VARIABLES PARA GESTIÓN DE EXPIRACIÓN
   // ══════════════════════════════════════════════════════════════════════════
+
   String? _accessToken;
   String? _refreshToken;
-  String? _userRole; // ✅ NUEVO: Rol del usuario
-  int? _userId; // ✅ NUEVO: ID del usuario
+  String? _userRole;
+  int? _userId;
+  DateTime? _tokenExpiry; // ✅ NUEVO: Fecha de expiración del token
   bool _isRefreshing = false;
   Completer<bool>? _refreshCompleter;
+
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ CONSTANTES PARA SECURE STORAGE (CON LLAVES NUEVAS)
+  // ✅ CONSTANTES (CON NUEVA LLAVE PARA EXPIRY)
   // ══════════════════════════════════════════════════════════════════════════
+
   static const String _keyAccessToken = 'jp_access_token';
   static const String _keyRefreshToken = 'jp_refresh_token';
   static const String _keyTokenTimestamp = 'jp_token_timestamp';
-  static const String _keyUserRole = 'jp_user_role'; // ✅ NUEVO
-  static const String _keyUserId = 'jp_user_id'; // ✅ NUEVO
+  static const String _keyTokenExpiry = 'jp_token_expiry'; // ✅ NUEVO
+  static const String _keyUserRole = 'jp_user_role';
+  static const String _keyUserId = 'jp_user_id';
+
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ GETTERS PÚBLICOS (CON ROL Y USER ID)
+  // GETTERS
   // ══════════════════════════════════════════════════════════════════════════
+
   bool get isAuthenticated => _accessToken != null;
   String? get accessToken => _accessToken;
   String? get refreshToken => _refreshToken;
-  String? get userRole => _userRole; // ✅ NUEVO
-  int? get userId => _userId; // ✅ NUEVO
+  String? get userRole => _userRole;
+  int? get userId => _userId;
+  DateTime? get tokenExpiry => _tokenExpiry; // ✅ NUEVO
+
   void _log(String message, {Object? error, StackTrace? stackTrace}) {
     developer.log(
       message,
@@ -61,72 +70,93 @@ class ApiClient {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ TOKEN MANAGEMENT (MODIFICADO PARA INCLUIR ROL)
+  // ✅ TOKEN MANAGEMENT CON EXPIRACIÓN
   // ══════════════════════════════════════════════════════════════════════════
-  /// ✅ MODIFICADO: Ahora acepta rol y userId como parámetros opcionales
+
+  /// ✅ MODIFICADO: Ahora calcula y guarda la fecha de expiración
   Future<void> saveTokens(
     String access,
     String refresh, {
-    String? role, // ✅ NUEVO: Parámetro opcional para el rol
-    int? userId, // ✅ NUEVO: Parámetro opcional para el ID
+    String? role,
+    int? userId,
+    Duration? tokenLifetime, // ✅ NUEVO: Duración del token
   }) async {
     try {
       _accessToken = access;
       _refreshToken = refresh;
-      _userRole = role; // ✅ NUEVO
-      _userId = userId; // ✅ NUEVO
+      _userRole = role;
+      _userId = userId;
+
+      // ✅ NUEVO: Calcular fecha de expiración
+      // Por defecto, asumimos 12 horas según la config del backend
+      final lifetime = tokenLifetime ?? const Duration(hours: 12);
+      _tokenExpiry = DateTime.now().add(lifetime);
+
+      // Guardar en secure storage
       await _secureStorage.write(key: _keyAccessToken, value: access);
       await _secureStorage.write(key: _keyRefreshToken, value: refresh);
       await _secureStorage.write(
         key: _keyTokenTimestamp,
         value: DateTime.now().toIso8601String(),
       );
+      await _secureStorage.write(
+        key: _keyTokenExpiry,
+        value: _tokenExpiry!.toIso8601String(),
+      );
 
-      // ✅ NUEVO: Guardar rol si existe
       if (role != null) {
         await _secureStorage.write(key: _keyUserRole, value: role);
-        _log('✅ Rol guardado: $role');
       }
 
-      // ✅ NUEVO: Guardar userId si existe
       if (userId != null) {
         await _secureStorage.write(key: _keyUserId, value: userId.toString());
-        _log('✅ User ID guardado: $userId');
       }
 
-      _log('✅ Tokens guardados');
+      _log('✅ Tokens guardados (expiran: ${_tokenExpiry!.toIso8601String()})');
     } catch (e, stackTrace) {
       _log('❌ Error guardando tokens', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
 
-  /// ✅ MODIFICADO: Ahora carga también el rol y userId
+  /// ✅ MODIFICADO: Ahora carga también la fecha de expiración
+  /// 🔧 CORREGIDO: Elimina la verificación que impedía recargar
   Future<void> loadTokens() async {
     try {
       _accessToken = await _secureStorage.read(key: _keyAccessToken);
       _refreshToken = await _secureStorage.read(key: _keyRefreshToken);
-      _userRole = await _secureStorage.read(key: _keyUserRole); // ✅ NUEVO
-      // ✅ NUEVO: Cargar userId
+      _userRole = await _secureStorage.read(key: _keyUserRole);
+
       final userIdStr = await _secureStorage.read(key: _keyUserId);
       if (userIdStr != null) {
         _userId = int.tryParse(userIdStr);
       }
 
+      final expiryStr = await _secureStorage.read(key: _keyTokenExpiry);
+      if (expiryStr != null) {
+        _tokenExpiry = DateTime.tryParse(expiryStr);
+      }
+
       if (_accessToken != null) {
         final timestamp = await _secureStorage.read(key: _keyTokenTimestamp);
-        _log('✅ Tokens cargados (guardados: $timestamp)');
-        _log('🔑 Token presente: ${_accessToken!.substring(0, 20)}...');
+        _log('✅ Tokens cargados desde storage (guardados: $timestamp)');
+        _log(
+          '🔑 Token presente: ${_accessToken!.substring(0, min(20, _accessToken!.length))}...',
+        );
 
-        // ✅ NUEVO: Log del rol y userId cargados
-        if (_userRole != null) {
-          _log('👤 Rol cargado: $_userRole');
+        if (_tokenExpiry != null) {
+          final remaining = _tokenExpiry!.difference(DateTime.now());
+          if (remaining.isNegative) {
+            _log('⚠️ Token EXPIRADO hace ${remaining.abs().inMinutes} minutos');
+          } else {
+            _log('⏰ Token expira en ${remaining.inMinutes} minutos');
+          }
         }
-        if (_userId != null) {
-          _log('🆔 User ID cargado: $_userId');
-        }
+
+        if (_userRole != null) _log('👤 Rol cargado: $_userRole');
+        if (_userId != null) _log('🆔 User ID cargado: $_userId');
       } else {
-        _log('ℹ️ No hay tokens guardados');
+        _log('ℹ️ No hay tokens guardados en storage');
       }
     } catch (e, stackTrace) {
       _log('❌ Error cargando tokens', error: e, stackTrace: stackTrace);
@@ -134,25 +164,72 @@ class ApiClient {
     }
   }
 
-  /// ✅ MODIFICADO: Ahora limpia también el rol y userId
+  /// ✅ MODIFICADO: Ahora limpia también la fecha de expiración
   Future<void> clearTokens() async {
     try {
       _accessToken = null;
       _refreshToken = null;
-      _userRole = null; // ✅ NUEVO
-      _userId = null; // ✅ NUEVO
+      _userRole = null;
+      _userId = null;
+      _tokenExpiry = null; // ✅ NUEVO
       _isRefreshing = false;
       _refreshCompleter = null;
+
       await _secureStorage.delete(key: _keyAccessToken);
       await _secureStorage.delete(key: _keyRefreshToken);
       await _secureStorage.delete(key: _keyTokenTimestamp);
-      await _secureStorage.delete(key: _keyUserRole); // ✅ NUEVO
-      await _secureStorage.delete(key: _keyUserId); // ✅ NUEVO
+      await _secureStorage.delete(key: _keyTokenExpiry); // ✅ NUEVO
+      await _secureStorage.delete(key: _keyUserRole);
+      await _secureStorage.delete(key: _keyUserId);
 
       _log('🗑️ Tokens y datos de usuario eliminados');
     } catch (e, stackTrace) {
       _log('⚠️ Error eliminando tokens', error: e, stackTrace: stackTrace);
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ✅ NUEVO: VALIDACIÓN DE EXPIRACIÓN
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Verifica si el token está expirado o está por expirar (5 min de margen)
+  bool _isTokenExpiredOrExpiring() {
+    if (_tokenExpiry == null) {
+      _log('⚠️ No hay fecha de expiración guardada');
+      return true; // Asumir expirado si no hay fecha
+    }
+
+    final now = DateTime.now();
+    final margin = const Duration(minutes: 5); // Margen de 5 minutos
+    final expiryWithMargin = _tokenExpiry!.subtract(margin);
+
+    final isExpiring = now.isAfter(expiryWithMargin);
+
+    if (isExpiring) {
+      final remaining = _tokenExpiry!.difference(now);
+      if (remaining.isNegative) {
+        _log('⏰ Token EXPIRADO hace ${remaining.abs().inMinutes} minutos');
+      } else {
+        _log(
+          '⏰ Token expira en ${remaining.inMinutes} minutos - refrescando preventivamente',
+        );
+      }
+    }
+
+    return isExpiring;
+  }
+
+  /// ✅ NUEVO: Asegurar que el token es válido antes de usarlo
+  Future<bool> _ensureValidToken() async {
+    // Si no hay token, no se puede validar
+    if (_accessToken == null) return false;
+
+    // Si el token no está por expirar, está OK
+    if (!_isTokenExpiredOrExpiring()) return true;
+
+    // El token está expirado o por expirar, intentar refresh
+    _log('🔄 Token expirado/expirando - refrescando automáticamente...');
+    return await refreshAccessToken();
   }
 
   Future<bool> hasStoredTokens() async {
@@ -165,13 +242,23 @@ class ApiClient {
   }
 
   Future<bool> refreshAccessToken() async {
-    if (_refreshToken == null) return false;
-    if (_isRefreshing) return await _refreshCompleter!.future;
+    if (_refreshToken == null) {
+      _log('❌ No hay refresh token disponible');
+      return false;
+    }
+
+    // Si ya se está refrescando, esperar al proceso actual
+    if (_isRefreshing) {
+      _log('⏳ Ya hay un refresh en proceso, esperando...');
+      return await _refreshCompleter!.future;
+    }
+
     _isRefreshing = true;
     _refreshCompleter = Completer<bool>();
 
     try {
       _log('🔄 Refrescando token...');
+
       final response = await http
           .post(
             Uri.parse(ApiConfig.tokenRefresh),
@@ -186,20 +273,25 @@ class ApiClient {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
 
-        // ✅ MODIFICADO: Mantener rol y userId al refrescar token
+        // ✅ MEJORADO: Calcular nueva fecha de expiración
         await saveTokens(
           data['access'],
           _refreshToken!,
-          role: _userRole, // ✅ Mantener rol existente
-          userId: _userId, // ✅ Mantener userId existente
+          role: _userRole,
+          userId: _userId,
+          tokenLifetime: const Duration(hours: 12), // Según config backend
         );
 
-        _log('✅ Token refrescado');
+        _log('✅ Token refrescado exitosamente');
         _refreshCompleter!.complete(true);
         return true;
       }
 
-      if (response.statusCode == 401) await clearTokens();
+      if (response.statusCode == 401) {
+        _log('❌ Refresh token inválido - limpiando sesión');
+        await clearTokens();
+      }
+
       _refreshCompleter!.complete(false);
       return false;
     } catch (e, stackTrace) {
@@ -213,8 +305,9 @@ class ApiClient {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // REQUEST WITH RETRY
+  // ✅ REQUEST WITH RETRY Y AUTO-REFRESH
   // ══════════════════════════════════════════════════════════════════════════
+
   Future<http.Response> _requestWithRetry(
     Future<http.Response> Function() request, {
     int maxRetries = 3,
@@ -222,24 +315,31 @@ class ApiClient {
   }) async {
     try {
       final response = await request().timeout(ApiConfig.receiveTimeout);
+
+      // ✅ MEJORADO: Manejo de 401 con refresh automático
       if (response.statusCode == 401 && retryCount == 0) {
-        _log('⚠️ Token expirado, refrescando...');
+        _log('⚠️ 401 recibido - intentando refresh automático...');
         final refreshed = await refreshAccessToken();
+
         if (refreshed) {
-          _log('🔄 Reintentando con nuevo token');
+          _log('🔄 Reintentando petición con nuevo token');
           return await _requestWithRetry(
             request,
             maxRetries: maxRetries,
             retryCount: 1,
           );
         }
+
         throw ApiException(
           statusCode: 401,
           message: ApiConfig.errorUnauthorized,
-          errors: {'detail': 'Sesión expirada'},
+          errors: {
+            'detail': 'Sesión expirada - por favor inicia sesión nuevamente',
+          },
           stackTrace: StackTrace.current,
         );
       }
+
       return response;
     } on TimeoutException catch (e, stackTrace) {
       if (retryCount < maxRetries) {
@@ -291,8 +391,9 @@ class ApiClient {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ HEADERS (MÉTODO HELPER MEJORADO)
+  // HEADERS
   // ══════════════════════════════════════════════════════════════════════════
+
   Map<String, String> _getHeaders() {
     _log(
       '🔑 Token actual: ${_accessToken != null ? "PRESENTE (${_accessToken!.substring(0, 20)}...)" : "AUSENTE"}',
@@ -306,7 +407,6 @@ class ApiClient {
     };
   }
 
-  /// ✅ Headers específicos para multipart (sin Content-Type)
   Map<String, String> _getMultipartHeaders() {
     return {
       'Accept': 'application/json',
@@ -316,10 +416,12 @@ class ApiClient {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // HTTP METHODS
+  // ✅ HTTP METHODS CON AUTO-REFRESH
   // ══════════════════════════════════════════════════════════════════════════
+
   Future<Map<String, dynamic>> get(String endpoint) async {
     await loadTokens();
+    await _ensureValidToken(); // ✅ NUEVO: Validar token antes de la petición
     _log('📥 GET: $endpoint');
     final response = await _requestWithRetry(
       () => http.get(Uri.parse(endpoint), headers: _getHeaders()),
@@ -332,6 +434,7 @@ class ApiClient {
     Map<String, dynamic> body,
   ) async {
     await loadTokens();
+    await _ensureValidToken(); // ✅ NUEVO
     _log('📤 POST: $endpoint');
     final response = await _requestWithRetry(
       () => http.post(
@@ -348,6 +451,7 @@ class ApiClient {
     Map<String, dynamic> body,
   ) async {
     await loadTokens();
+    await _ensureValidToken(); // ✅ NUEVO
     _log('📤 PUT: $endpoint');
     final response = await _requestWithRetry(
       () => http.put(
@@ -364,6 +468,7 @@ class ApiClient {
     Map<String, dynamic> body,
   ) async {
     await loadTokens();
+    await _ensureValidToken(); // ✅ NUEVO
     _log('📤 PATCH: $endpoint');
     final response = await _requestWithRetry(
       () => http.patch(
@@ -377,6 +482,7 @@ class ApiClient {
 
   Future<Map<String, dynamic>> delete(String endpoint) async {
     await loadTokens();
+    await _ensureValidToken(); // ✅ NUEVO
     _log('🗑️ DELETE: $endpoint');
     final response = await _requestWithRetry(
       () => http.delete(Uri.parse(endpoint), headers: _getHeaders()),
@@ -385,8 +491,9 @@ class ApiClient {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ MÉTODO MULTIPART (SIN REINTENTOS AUTOMÁTICOS)
+  // MULTIPART (SIN CAMBIOS SIGNIFICATIVOS)
   // ══════════════════════════════════════════════════════════════════════════
+
   Future<Map<String, dynamic>> multipart(
     String method,
     String endpoint,
@@ -394,17 +501,17 @@ class ApiClient {
     Map<String, File> files,
   ) async {
     await loadTokens();
-    _log('📤 $method (multipart - SIN reintentos): $endpoint');
+    await _ensureValidToken(); // ✅ NUEVO
+    _log('📤 $method (multipart): $endpoint');
     _log('📦 Fields: ${fields.keys.join(", ")}');
     _log('📸 Files: ${files.keys.join(", ")}');
-    // Validar archivos
+
     await _validarArchivosMultipart(files);
 
     try {
       final uri = Uri.parse(endpoint);
       final request = http.MultipartRequest(method, uri);
 
-      // ✅ Agregar headers
       request.headers.addAll(_getMultipartHeaders());
 
       _log('📋 Headers multipart:');
@@ -414,10 +521,8 @@ class ApiClient {
         );
       });
 
-      // Agregar campos
       request.fields.addAll(fields);
 
-      // Agregar archivos
       for (final entry in files.entries) {
         final fieldName = entry.key;
         final file = entry.value;
@@ -439,11 +544,10 @@ class ApiClient {
         _log('✅ Archivo agregado: ${multipartFile.filename} ($length bytes)');
       }
 
-      // ✅ CAMBIO PRINCIPAL: Enviar SIN reintentos, solo con timeout extendido
-      _log('📤 Enviando petición multipart (1 intento, timeout: 90s)...');
+      _log('📤 Enviando petición multipart...');
 
       final streamedResponse = await request.send().timeout(
-        ApiConfig.receiveTimeout * 3, // 90 segundos
+        ApiConfig.receiveTimeout * 3,
         onTimeout: () {
           throw TimeoutException(
             'La subida tardó demasiado. Verifica tu conexión.',
@@ -453,20 +557,17 @@ class ApiClient {
 
       final response = await http.Response.fromStream(streamedResponse);
 
-      // ✅ Manejo especial de 401 (token expirado)
       if (response.statusCode == 401) {
         _log('⚠️ Token expirado en multipart, refrescando...');
         final refreshed = await refreshAccessToken();
 
         if (refreshed) {
-          _log('🔄 Reintentando multipart UNA VEZ con nuevo token');
+          _log('🔄 Reintentando multipart con nuevo token');
 
-          // Recrear request con nuevo token
           final retryRequest = http.MultipartRequest(method, uri);
           retryRequest.headers.addAll(_getMultipartHeaders());
           retryRequest.fields.addAll(fields);
 
-          // Re-agregar archivos
           for (final entry in files.entries) {
             final file = entry.value;
             final stream = http.ByteStream(file.openRead());
@@ -535,8 +636,9 @@ class ApiClient {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // VALIDACIÓN DE ARCHIVOS
+  // UTILIDADES (sin cambios)
   // ══════════════════════════════════════════════════════════════════════════
+
   Future<void> _validarArchivosMultipart(Map<String, File> files) async {
     for (final entry in files.entries) {
       final fieldName = entry.key;
@@ -617,9 +719,6 @@ class ApiClient {
     }
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // RESPONSE HANDLING
-  // ══════════════════════════════════════════════════════════════════════════
   Map<String, dynamic> _handleResponse(http.Response response) {
     _log('📨 Response: ${response.statusCode}');
     if (response.statusCode >= 200 && response.statusCode < 300) {

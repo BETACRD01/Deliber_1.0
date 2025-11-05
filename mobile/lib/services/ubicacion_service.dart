@@ -92,6 +92,46 @@ class UbicacionService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // ✅ VALIDACIÓN DE AUTENTICACIÓN
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Verifica que el usuario esté autenticado antes de enviar ubicación
+  Future<bool> _verificarAutenticacion() async {
+    try {
+      _log('🔍 Verificando autenticación...');
+
+      // Cargar tokens si no están en memoria
+      await _repartidorService.client.loadTokens();
+
+      final isAuth = _repartidorService.client.isAuthenticated;
+      final token = _repartidorService.client.accessToken;
+
+      _log('   isAuthenticated: $isAuth');
+      _log('   Token presente: ${token != null}');
+
+      if (!isAuth) {
+        _log('❌ No autenticado - no se puede enviar ubicación');
+        onError?.call('No estás autenticado');
+        return false;
+      }
+
+      if (token != null) {
+        _log('✅ Autenticación verificada');
+        _log('   Token: ${token.substring(0, 20)}...');
+      }
+
+      return true;
+    } catch (e, stackTrace) {
+      _log(
+        '❌ Error verificando autenticación',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // 🔐 VERIFICACIÓN Y SOLICITUD DE PERMISOS
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -194,13 +234,18 @@ class UbicacionService {
   /// Obtiene la ubicación actual Y la envía al servidor
   Future<Position?> obtenerYEnviarUbicacion() async {
     try {
+      _log('🎯 Iniciando obtención y envío de ubicación...');
+
       final position = await obtenerUbicacionActual();
 
       if (position == null) {
+        _log('❌ No se pudo obtener ubicación');
         return null;
       }
 
+      _log('📤 Enviando ubicación al servidor...');
       await _enviarUbicacionAlServidor(position);
+      _log('✅ Ubicación enviada exitosamente');
 
       return position;
     } catch (e, stackTrace) {
@@ -221,6 +266,16 @@ class UbicacionService {
   /// Se ejecuta cada [intervalo] (default: 30 segundos)
   Future<bool> iniciarEnvioPeriodico({Duration? intervalo}) async {
     try {
+      _log('═══════════════════════════════════════════════════════════════');
+      _log('🚀 INICIANDO ENVÍO PERIÓDICO DE UBICACIÓN');
+      _log('═══════════════════════════════════════════════════════════════');
+
+      // ✅ Verificar autenticación PRIMERO
+      if (!await _verificarAutenticacion()) {
+        _log('❌ No se puede iniciar - usuario no autenticado');
+        return false;
+      }
+
       // Verificar permisos
       if (!await solicitarPermisos()) {
         _log('❌ No se concedieron permisos');
@@ -235,11 +290,12 @@ class UbicacionService {
         intervaloPeriodico = intervalo;
       }
 
-      _log(
-        '🚀 Iniciando envío periódico (cada ${intervaloPeriodico.inSeconds}s)',
-      );
+      _log('⚙️ Configuración:');
+      _log('   Intervalo: ${intervaloPeriodico.inSeconds}s');
+      _log('   Precisión: ${precision.name}');
 
       // Enviar ubicación inmediatamente
+      _log('📍 Enviando ubicación inicial...');
       await obtenerYEnviarUbicacion();
 
       // Iniciar timer
@@ -251,7 +307,9 @@ class UbicacionService {
       _modoActual = ModoUbicacion.periodico;
       onEstadoCambiado?.call(true);
 
-      _log('✅ Envío periódico iniciado correctamente');
+      _log('═══════════════════════════════════════════════════════════════');
+      _log('✅ ENVÍO PERIÓDICO INICIADO CORRECTAMENTE');
+      _log('═══════════════════════════════════════════════════════════════');
       return true;
     } catch (e, stackTrace) {
       _log(
@@ -267,6 +325,8 @@ class UbicacionService {
   /// Envía ubicación de forma periódica (método privado)
   Future<void> _enviarUbicacionPeriodica() async {
     try {
+      _log('⏰ [TIMER] Ejecutando envío periódico...');
+
       final position =
           await Geolocator.getCurrentPosition(
             desiredAccuracy: precision,
@@ -282,7 +342,7 @@ class UbicacionService {
       await _enviarUbicacionAlServidor(position);
 
       _log(
-        '📍 [PERIÓDICO] Ubicación enviada: '
+        '✅ [PERIÓDICO] Ubicación enviada: '
         '(${position.latitude.toStringAsFixed(5)}, '
         '${position.longitude.toStringAsFixed(5)})',
       );
@@ -297,12 +357,21 @@ class UbicacionService {
   // ══════════════════════════════════════════════════════════════════════════
 
   /// Inicia el rastreo en tiempo real con stream
-  /// Actualiza cuando el repartidor se mueve [distanciaMinima] metros (default: 5m)
   Future<bool> iniciarRastreoTiempoReal({
     int? distanciaMinima,
     LocationAccuracy? precision,
   }) async {
     try {
+      _log('═══════════════════════════════════════════════════════════════');
+      _log('🚀 INICIANDO RASTREO EN TIEMPO REAL');
+      _log('═══════════════════════════════════════════════════════════════');
+
+      // ✅ Verificar autenticación PRIMERO
+      if (!await _verificarAutenticacion()) {
+        _log('❌ No se puede iniciar - usuario no autenticado');
+        return false;
+      }
+
       // Verificar permisos
       if (!await solicitarPermisos()) {
         _log('❌ No se concedieron permisos');
@@ -321,9 +390,9 @@ class UbicacionService {
         this.precision = precision;
       }
 
-      _log('🚀 Iniciando rastreo en tiempo real');
-      _log('   📏 Distancia mínima: ${this.distanciaMinima}m');
-      _log('   🎯 Precisión: ${this.precision.name}');
+      _log('⚙️ Configuración:');
+      _log('   Distancia mínima: ${this.distanciaMinima}m');
+      _log('   Precisión: ${this.precision.name}');
 
       // Configurar settings
       final settings = LocationSettings(
@@ -343,7 +412,9 @@ class UbicacionService {
       _modoActual = ModoUbicacion.tiempoReal;
       onEstadoCambiado?.call(true);
 
-      _log('✅ Rastreo en tiempo real iniciado correctamente');
+      _log('═══════════════════════════════════════════════════════════════');
+      _log('✅ RASTREO EN TIEMPO REAL INICIADO CORRECTAMENTE');
+      _log('═══════════════════════════════════════════════════════════════');
       return true;
     } catch (e, stackTrace) {
       _log(
@@ -393,19 +464,54 @@ class UbicacionService {
   // ══════════════════════════════════════════════════════════════════════════
 
   /// Envía la ubicación al servidor usando RepartidorService
-  /// ✅ REFACTORIZADO: Ahora usa el endpoint correcto
   Future<void> _enviarUbicacionAlServidor(Position position) async {
     try {
-      await _repartidorService.actualizarUbicacion(
+      _log('───────────────────────────────────────────────────────────────');
+      _log('📤 ENVIANDO UBICACIÓN AL SERVIDOR');
+      _log('───────────────────────────────────────────────────────────────');
+      _log('📍 Coordenadas:');
+      _log('   Latitud: ${position.latitude}');
+      _log('   Longitud: ${position.longitude}');
+      _log('   Precisión: ${position.accuracy}m');
+      _log('   Timestamp: ${position.timestamp}');
+
+      // ✅ Verificar autenticación antes de cada envío
+      if (!await _verificarAutenticacion()) {
+        _log('⚠️ Omitiendo envío - no autenticado');
+        return;
+      }
+
+      _log('📡 Llamando a RepartidorService.actualizarUbicacion()...');
+
+      final response = await _repartidorService.actualizarUbicacion(
         latitud: position.latitude,
         longitud: position.longitude,
       );
+
+      _log('✅ Respuesta del servidor recibida:');
+      _log('   Timestamp: ${response.timestamp}');
+      _log('   Latitud: ${response.latitud}');
+      _log('   Longitud: ${response.longitud}');
+      _log('───────────────────────────────────────────────────────────────');
+      _log('✅ UBICACIÓN ENVIADA EXITOSAMENTE');
+      _log('───────────────────────────────────────────────────────────────');
 
       // Notificar éxito
       onUbicacionActualizada?.call(position);
     } on ApiException catch (e) {
       _log('❌ Error API enviando ubicación: ${e.message}');
-      onError?.call('Error al enviar ubicación: ${e.message}');
+      _log('   Status Code: ${e.statusCode}');
+      _log('   Errors: ${e.errors}');
+
+      // ✅ Si es 401, detener el servicio
+      if (e.statusCode == 401) {
+        _log('🛑 Token inválido - deteniendo servicio de ubicación');
+        detener();
+        onError?.call('Sesión expirada - por favor inicia sesión nuevamente');
+      } else {
+        onError?.call('Error al enviar ubicación: ${e.message}');
+      }
+
       rethrow;
     } catch (e, stackTrace) {
       _log(

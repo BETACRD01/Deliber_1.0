@@ -6,13 +6,25 @@ import logging
 from dotenv import load_dotenv
 
 # ==========================================
-# INICIALIZACIÓN
+# INICIALIZACION
 # ==========================================
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Logger para configuración
+# Logger para configuracion
 logger = logging.getLogger(__name__)
+
+# ==========================================
+# DETECCION DE RED (ANTES DE TODO)
+# ==========================================
+try:
+    from utils.network_detector import NetworkDetector, obtener_config_red
+    NETWORK_DETECTION_ENABLED = True
+    CONFIG_RED = obtener_config_red()
+except ImportError:
+    NETWORK_DETECTION_ENABLED = False
+    CONFIG_RED = None
+    print("⚠️ network_detector no disponible, usando configuracion estatica del .env")
 
 # ==========================================
 # HELPER FUNCTIONS
@@ -33,30 +45,39 @@ def validate_required_env(*keys):
         raise EnvironmentError(f"Variables de entorno faltantes: {', '.join(missing)}")
 
 # ==========================================
-# VALIDACIÓN DE VARIABLES CRÍTICAS
+# VALIDACION DE VARIABLES CRITICAS
 # ==========================================
 validate_required_env('SECRET_KEY', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD')
 
 # ==========================================
-# CONFIGURACIÓN BÁSICA
+# CONFIGURACION BASICA
 # ==========================================
 SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = get_env_bool('DEBUG', True)
 
-# Configuración de red desde .env (con fallbacks)
-ALLOWED_HOSTS = get_env_list('ALLOWED_HOSTS', 'localhost,127.0.0.1')
+# ==========================================
+# ALLOWED_HOSTS DINAMICO
+# ==========================================
+if NETWORK_DETECTION_ENABLED and CONFIG_RED:
+    ALLOWED_HOSTS = NetworkDetector.obtener_allowed_hosts(CONFIG_RED)
+    logger.info(f"✅ ALLOWED_HOSTS configurado automaticamente para red: {CONFIG_RED['nombre']}")
+    logger.info(f"   Total hosts permitidos: {len(ALLOWED_HOSTS)}")
+else:
+    ALLOWED_HOSTS = get_env_list('ALLOWED_HOSTS', 'localhost,127.0.0.1')
+    ALLOWED_HOSTS.extend(['0.0.0.0', '10.0.2.2', '*.local', 'backend'])
+    logger.warning("⚠️ Usando ALLOWED_HOSTS estatico desde .env")
 
-# Agregar redes permitidas desde .env
-ALLOWED_HOSTS.extend([
-    '10.0.2.2',
-    '*.local',  # Wildcard para desarrollo local
-])
-
-# Agregar redes específicas si están definidas
-for network in ['RED_CASA', 'RED_INSTITUCIONAL', 'RED_HOTSPOT']:
-    network_range = os.getenv(f'{network}_RANGE')
-    if network_range:
-        ALLOWED_HOSTS.append(network_range)
+# ==========================================
+# FRONTEND_URL DINAMICO
+# ==========================================
+if NETWORK_DETECTION_ENABLED and CONFIG_RED:
+    FRONTEND_URL = NetworkDetector.obtener_frontend_url(
+        CONFIG_RED, 
+        puerto=int(os.getenv('BACKEND_PORT', 8000))
+    )
+    logger.info(f"✅ FRONTEND_URL: {FRONTEND_URL}")
+else:
+    FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8000')
 
 # ==========================================
 # APLICACIONES INSTALADAS
@@ -195,58 +216,48 @@ SESSION_CACHE_ALIAS = 'default'
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', REDIS_URL)
 
-# Configuración básica
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'America/Guayaquil'
 CELERY_ENABLE_UTC = True
 
-# Resultados
-CELERY_RESULT_EXPIRES = 86400  # 24 horas
+CELERY_RESULT_EXPIRES = 86400
 CELERY_RESULT_BACKEND_MAX_RETRIES = 10
 CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
 
-# Tareas
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 1800  # 30 minutos
-CELERY_TASK_SOFT_TIME_LIMIT = 1500  # 25 minutos
+CELERY_TASK_TIME_LIMIT = 1800
+CELERY_TASK_SOFT_TIME_LIMIT = 1500
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
-# Worker
 CELERY_WORKER_PREFETCH_MULTIPLIER = 4
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 CELERY_WORKER_DISABLE_RATE_LIMITS = False
 
-# Reintentos
 CELERY_TASK_DEFAULT_RETRY_DELAY = 60
 CELERY_TASK_MAX_RETRIES = 3
 
-# Logging
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 CELERY_WORKER_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s] %(message)s'
 CELERY_WORKER_TASK_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s] [%(task_name)s(%(task_id)s)] %(message)s'
 
-# Beat
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
-# Redis específico
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_RETRY = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
 
-# Queues
 CELERY_TASK_DEFAULT_QUEUE = 'default'
 CELERY_TASK_DEFAULT_EXCHANGE = 'default'
 CELERY_TASK_DEFAULT_ROUTING_KEY = 'default'
 
-# Monitoreo
 CELERY_SEND_TASK_SENT_EVENT = True
 CELERY_SEND_EVENTS = True
 
 # ==========================================
-# AUTENTICACIÓN Y SEGURIDAD
+# AUTENTICACION Y SEGURIDAD
 # ==========================================
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -263,7 +274,7 @@ AUTHENTICATION_BACKENDS = [
 AUTH_USER_MODEL = 'authentication.User'
 
 # ==========================================
-# INTERNACIONALIZACIÓN
+# INTERNACIONALIZACION
 # ==========================================
 LANGUAGE_CODE = 'es'
 TIME_ZONE = 'America/Guayaquil'
@@ -271,7 +282,7 @@ USE_I18N = True
 USE_TZ = True
 
 # ==========================================
-# ARCHIVOS ESTÁTICOS Y MEDIA
+# ARCHIVOS ESTATICOS Y MEDIA
 # ==========================================
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -279,11 +290,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Crear directorio media si no existe
 try:
     MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 except Exception as e:
-    print(f'⚠️  No se pudo crear directorio media: {e}')
+    print(f'⚠️ No se pudo crear directorio media: {e}')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -311,7 +321,6 @@ SOCIALACCOUNT_PROVIDERS = {
 }
 
 GOOGLE_OAUTH_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8000')
 
 # ==========================================
 # EMAIL CONFIGURATION
@@ -352,7 +361,6 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 100,
 }
 
-# Throttling solo en producción
 if not DEBUG:
     REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = [
         'rest_framework.throttling.AnonRateThrottle',
@@ -371,21 +379,55 @@ else:
     REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {}
 
 # ==========================================
-# JWT CONFIGURATION
+# JWT CONFIGURATION (MEJORADO)
 # ==========================================
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    # ✅ CAMBIO PRINCIPAL: Aumentar tiempo de vida
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=12),  # 12 horas (antes 30 min)
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),   # 30 días (antes 7)
+    
+    # ✅ NUEVO: Configuración para refresh automático
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
+    
+    # Configuración de seguridad
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
     'AUTH_HEADER_TYPES': ('Bearer',),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
+    
+    # ✅ NUEVO: Agregar claims personalizados útiles para el cliente
+    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
+    
+    # ✅ NUEVO: Configuración de tokens
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+    
+    # ✅ NUEVO: Claims adicionales en el token
+    'TOKEN_OBTAIN_SERIALIZER': 'rest_framework_simplejwt.serializers.TokenObtainPairSerializer',
+    'TOKEN_REFRESH_SERIALIZER': 'rest_framework_simplejwt.serializers.TokenRefreshSerializer',
+    'TOKEN_VERIFY_SERIALIZER': 'rest_framework_simplejwt.serializers.TokenVerifySerializer',
+    'TOKEN_BLACKLIST_SERIALIZER': 'rest_framework_simplejwt.serializers.TokenBlacklistSerializer',
+    
+    # ✅ NUEVO: Sliding tokens (opcional, deshabilitado por ahora)
+    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
+    'SLIDING_TOKEN_LIFETIME': timedelta(hours=12),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=30),
 }
+
+# ✅ NUEVO: Configuración para desarrollo
+if DEBUG:
+    # En desarrollo, tokens más largos para facilitar testing
+    SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'] = timedelta(hours=24)  # 24 horas
+    logger.info("🔧 JWT: Modo DEBUG - Tokens de 24 horas")
+else:
+    # En producción, tokens más cortos por seguridad
+    SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'] = timedelta(hours=2)  # 2 horas
+    logger.info("🔐 JWT: Modo PRODUCCIÓN - Tokens de 2 horas")
 
 # ==========================================
 # CORS CONFIGURATION
@@ -393,7 +435,17 @@ SIMPLE_JWT = {
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 
 if not DEBUG:
-    CORS_ALLOWED_ORIGINS = get_env_list('CORS_ALLOWED_ORIGINS', 'https://api.jpexpress.com,https://jpexpress.com')
+    if NETWORK_DETECTION_ENABLED and CONFIG_RED:
+        CORS_ALLOWED_ORIGINS = NetworkDetector.obtener_cors_origins(
+            CONFIG_RED,
+            puerto=int(os.getenv('BACKEND_PORT', 8000))
+        )
+        logger.info(f"✅ CORS_ALLOWED_ORIGINS: {len(CORS_ALLOWED_ORIGINS)} origenes en produccion")
+    else:
+        CORS_ALLOWED_ORIGINS = get_env_list(
+            'CORS_ALLOWED_ORIGINS', 
+            'https://api.jpexpress.com,https://jpexpress.com'
+        )
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = ['DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT']
@@ -410,9 +462,20 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # ==========================================
-# CSRF CONFIGURATION
+# CSRF_TRUSTED_ORIGINS DINAMICO
 # ==========================================
-CSRF_TRUSTED_ORIGINS = get_env_list('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000')
+if NETWORK_DETECTION_ENABLED and CONFIG_RED:
+    CSRF_TRUSTED_ORIGINS = NetworkDetector.obtener_cors_origins(
+        CONFIG_RED, 
+        puerto=int(os.getenv('BACKEND_PORT', 8000))
+    )
+    logger.info(f"✅ CSRF_TRUSTED_ORIGINS: {len(CSRF_TRUSTED_ORIGINS)} origenes configurados")
+else:
+    CSRF_TRUSTED_ORIGINS = get_env_list(
+        'CSRF_TRUSTED_ORIGINS', 
+        'http://localhost:8000,http://127.0.0.1:8000'
+    )
+    logger.warning("⚠️ Usando CSRF_TRUSTED_ORIGINS estatico desde .env")
 
 # ==========================================
 # API LOGGING MIDDLEWARE
@@ -452,51 +515,11 @@ LOGGING = {
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
-        'usuarios': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'firebase': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'repartidores': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'pedidos': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'pedidos.signals': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'pedidos.tasks': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'celery': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'reportes': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
     },
 }
 
 # ==========================================
-# SECURITY SETTINGS (PRODUCCIÓN)
+# SECURITY SETTINGS (PRODUCCION)
 # ==========================================
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
@@ -533,7 +556,6 @@ else:
         'RESET_PASSWORD_WINDOW': 3600,
     }
 
-# Desempaquetar config
 RATE_LIMIT_LOGIN_ATTEMPTS = RATE_LIMIT_CONFIG['LOGIN_ATTEMPTS']
 RATE_LIMIT_LOGIN_WINDOW = RATE_LIMIT_CONFIG['LOGIN_WINDOW']
 RATE_LIMIT_BURST_REQUESTS = RATE_LIMIT_CONFIG['BURST_REQUESTS']
@@ -542,9 +564,9 @@ RATE_LIMIT_RESET_PASSWORD = RATE_LIMIT_CONFIG['RESET_PASSWORD']
 RATE_LIMIT_RESET_PASSWORD_WINDOW = RATE_LIMIT_CONFIG['RESET_PASSWORD_WINDOW']
 
 RATE_LIMIT_MESSAGES = {
-    'login': 'Demasiados intentos de inicio de sesión. Por favor espera {tiempo} segundos.',
+    'login': 'Demasiados intentos de inicio de sesion. Por favor espera {tiempo} segundos.',
     'burst': 'Detectamos actividad sospechosa. Por favor espera un momento.',
-    'reset_password': 'Has alcanzado el límite de solicitudes. Intenta más tarde.',
+    'reset_password': 'Has alcanzado el limite de solicitudes. Intenta mas tarde.',
 }
 
 # ==========================================
@@ -555,22 +577,22 @@ FIREBASE_CREDENTIALS_PATH = BASE_DIR / 'firebase-credentials.json'
 def initialize_firebase():
     """Inicializa Firebase solo cuando se necesita"""
     if not FIREBASE_CREDENTIALS_PATH.exists():
-        print('⚠️  Firebase credentials no encontrado')
+        print('⚠️ Firebase credentials no encontrado')
         return False
     
     try:
         from utils.firebase_service import FirebaseService
         if FirebaseService.initialize():
-            print('✓ Firebase: Notificaciones Push ACTIVAS')
+            print('✅ Firebase: Notificaciones Push ACTIVAS')
             return True
         else:
-            print('⚠️  Firebase: Notificaciones Push DESACTIVADAS')
+            print('⚠️ Firebase: Notificaciones Push DESACTIVADAS')
             return False
     except ImportError:
-        print('⚠️  firebase_service no encontrado')
+        print('⚠️ firebase_service no encontrado')
         return False
     except Exception as e:
-        print(f'✗ Error al inicializar Firebase: {e}')
+        print(f'❌ Error al inicializar Firebase: {e}')
         return False
 
 # ==========================================
@@ -580,33 +602,42 @@ API_KEY_WEB = os.getenv('API_KEY_WEB', '')
 API_KEY_MOBILE = os.getenv('API_KEY_MOBILE', '')
 
 # ==========================================
-# STARTUP VALIDATION
+# STARTUP INFO
 # ==========================================
 def log_startup_info():
-    """Muestra información de inicio solo una vez"""
+    """Muestra informacion de inicio solo una vez"""
     if not DEBUG:
         return
     
-    print('=' * 50)
-    print('DELIBER - Configuración de Desarrollo')
-    print('=' * 50)
-    print(f'✓ DEBUG: {DEBUG}')
-    print(f'✓ Database: {DATABASES["default"]["NAME"]}@{DATABASES["default"]["HOST"]}')
-    print(f'✓ Redis: {REDIS_URL}')
-    print(f'✓ Celery Broker: {CELERY_BROKER_URL}')
+    print('=' * 70)
+    print('DELIBER - Configuracion de Desarrollo')
+    print('=' * 70)
+    print(f'✅ DEBUG: {DEBUG}')
+    
+    if NETWORK_DETECTION_ENABLED and CONFIG_RED:
+        print(f'✅ Red detectada: {CONFIG_RED["nombre"]} ({CONFIG_RED.get("modo", "AUTO")})')
+        print(f'✅ IP Servidor: {CONFIG_RED["ip_servidor"]}')
+        print(f'✅ ALLOWED_HOSTS: {len(ALLOWED_HOSTS)} hosts configurados')
+    else:
+        print('⚠️  Deteccion de red: Deshabilitada')
+    
+    print(f'✅ Database: {DATABASES["default"]["NAME"]}@{DATABASES["default"]["HOST"]}')
+    print(f'✅ Redis: {REDIS_URL}')
+    print(f'✅ Celery Broker: {CELERY_BROKER_URL}')
+    print(f'✅ Frontend URL: {FRONTEND_URL}')
     
     if API_KEY_WEB and API_KEY_MOBILE:
-        print('✓ API Keys: Configuradas')
+        print('✅ API Keys: Configuradas')
     else:
-        print('✗ API Keys: No configuradas')
+        print('⚠️  API Keys: No configuradas')
     
     if not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD:
-        print('✗ Email: No configurado')
+        print('⚠️  Email: No configurado')
     else:
-        print('✓ Email: Configurado')
+        print('✅ Email: Configurado')
     
-    print('=' * 50)
+    print('=' * 70)
 
-# Ejecutar validación al iniciar
-if __name__ != '__main__':
+# Ejecutar solo si no es un comando de Django
+if 'runserver' in sys.argv or 'run_gunicorn' in sys.argv:
     log_startup_info()

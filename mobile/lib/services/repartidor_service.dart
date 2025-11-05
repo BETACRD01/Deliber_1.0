@@ -36,6 +36,9 @@ class RepartidorService {
   EstadisticasRepartidorModel? _estadisticasCache;
   List<VehiculoRepartidorModel>? _vehiculosCache;
 
+  // ✅ NUEVO: Getter público para acceder al cliente (necesario para UbicacionService)
+  ApiClient get client => _client;
+
   // ══════════════════════════════════════════════════════════════════════════
   // LOGGING
   // ══════════════════════════════════════════════════════════════════════════

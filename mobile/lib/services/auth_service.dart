@@ -7,7 +7,7 @@ import '../apis/helpers/api_exception.dart';
 import 'dart:developer' as developer;
 
 /// Servicio de Autenticación - SOLO lógica de autenticación
-/// ✅ CON PERSISTENCIA DE ROL DE USUARIO
+/// ✅ CON PERSISTENCIA DE ROL DE USUARIO Y TOKEN LIFETIME
 class AuthService {
   // ============================================
   // SINGLETON
@@ -34,11 +34,11 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ REGISTRO (MODIFICADO PARA GUARDAR ROL)
+  // ✅ REGISTRO (CON TOKEN LIFETIME)
   // ============================================
 
   Future<Map<String, dynamic>> register(Map<String, dynamic> data) async {
-    _log('📝 Iniciando registro para: ${data['email']}');
+    _log('🔐 Iniciando registro para: ${data['email']}');
 
     _normalizarDatosRegistro(data);
     _logDatosRegistro(data);
@@ -51,23 +51,24 @@ class AuthService {
       if (response.containsKey('tokens')) {
         final tokens = response['tokens'];
 
-        // ✅ NUEVO: Extraer rol y userId del response
+        // ✅ Extraer rol y userId del response
         final String? rol = response['rol'] as String?;
-        final int? userId = response['user_id'] as int?;
+        final int? userId =
+            (response['user_id'] ?? response['id'] ?? response['usuario_id'])
+                as int?;
 
-        // ✅ NUEVO: Guardar tokens CON rol y userId
+        // ✅ Guardar tokens con rol, userId y tokenLifetime
         await _client.saveTokens(
           tokens['access'],
           tokens['refresh'],
           role: rol,
           userId: userId,
+          tokenLifetime: const Duration(hours: 12), // ✅ Duración del token
         );
-
-        _log('✅ Usuario registrado exitosamente');
-        _log('👤 Rol asignado: $rol');
+        _log('✅ Registro exitoso');
+        _log('👤 Rol: $rol');
         _log('🆔 User ID: $userId');
       }
-
       return response;
     } on ApiException {
       rethrow;
@@ -83,7 +84,7 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ LOGIN (MODIFICADO PARA GUARDAR ROL)
+  // ✅ LOGIN (CON TOKEN LIFETIME)
   // ============================================
 
   Future<Map<String, dynamic>> login({
@@ -100,16 +101,17 @@ class AuthService {
     if (response.containsKey('tokens')) {
       final tokens = response['tokens'];
 
-      // ✅ NUEVO: Extraer rol y userId del response
+      // ✅ Extraer rol y userId del response
       final String? rol = response['rol'] as String?;
       final int? userId = response['user_id'] as int?;
 
-      // ✅ NUEVO: Guardar tokens CON rol y userId
+      // ✅ Guardar tokens CON rol, userId y tokenLifetime
       await _client.saveTokens(
         tokens['access'],
         tokens['refresh'],
         role: rol,
         userId: userId,
+        tokenLifetime: const Duration(hours: 12), // ✅ Duración del token
       );
 
       _log('✅ Login exitoso');
@@ -121,7 +123,7 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ LOGIN CON GOOGLE (MODIFICADO PARA GUARDAR ROL)
+  // ✅ LOGIN CON GOOGLE (CON TOKEN LIFETIME)
   // ============================================
 
   Future<Map<String, dynamic>> loginWithGoogle({
@@ -136,16 +138,17 @@ class AuthService {
     if (response.containsKey('tokens')) {
       final tokens = response['tokens'];
 
-      // ✅ NUEVO: Extraer rol y userId del response
+      // ✅ Extraer rol y userId del response
       final String? rol = response['rol'] as String?;
       final int? userId = response['user_id'] as int?;
 
-      // ✅ NUEVO: Guardar tokens CON rol y userId
+      // ✅ Guardar tokens CON rol, userId y tokenLifetime
       await _client.saveTokens(
         tokens['access'],
         tokens['refresh'],
         role: rol,
         userId: userId,
+        tokenLifetime: const Duration(hours: 12), // ✅ Duración del token
       );
 
       _log('✅ Login con Google exitoso');
@@ -302,7 +305,7 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ NUEVOS MÉTODOS PÚBLICOS PARA GESTIÓN DE ROL
+  // ✅ MÉTODOS PÚBLICOS PARA GESTIÓN DE ROL
   // ============================================
 
   /// Obtiene el rol cacheado del usuario sin hacer petición al servidor
@@ -347,15 +350,15 @@ class AuthService {
 
   /// Imprime información de debug del estado actual
   void imprimirEstadoAuth() {
-    _log('═══════════════════════════════════════════════════════════════');
+    _log('╔═══════════════════════════════════════════════════════════╗');
     _log('📊 ESTADO DE AUTENTICACIÓN');
-    _log('═══════════════════════════════════════════════════════════════');
-    _log('🔐 Autenticado: ${_client.isAuthenticated}');
+    _log('╠═══════════════════════════════════════════════════════════╣');
+    _log('🔓 Autenticado: ${_client.isAuthenticated}');
     _log('👤 Rol cacheado: ${_client.userRole ?? "null"}');
     _log('🆔 User ID: ${_client.userId ?? "null"}');
     _log('🔑 Token presente: ${_client.accessToken != null}');
     _log('🔄 Refresh token presente: ${_client.refreshToken != null}');
-    _log('═══════════════════════════════════════════════════════════════');
+    _log('╚═══════════════════════════════════════════════════════════╝');
   }
 
   // ============================================

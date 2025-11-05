@@ -6,16 +6,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 // Configuración base
-import './config/network_initializer.dart';
 import './config/rutas.dart';
+import './config/api_config.dart';
 import 'services/auth_service.dart';
 import './services/servicio_notificacion.dart';
-
-// 🚀 NUEVO: Integración de ubicación
 import './services/ubicacion_service.dart';
+import './apis/subapis/http_client.dart'; // ✅ AGREGADO
 
 // ============================================
-// 🔔 HANDLER PARA NOTIFICACIONES EN BACKGROUND
+// 📢 HANDLER PARA NOTIFICACIONES EN BACKGROUND
 // ============================================
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -42,28 +41,45 @@ void main() async {
   }
 
   // ============================================
-  // PASO 2: Cargar tokens guardados
+  // PASO 2: Inicializar detección de red
+  // ============================================
+  try {
+    debugPrint('🌐 Inicializando detección de red...');
+    await ApiConfig.initialize();
+    debugPrint('✅ Detección de red completada');
+  } catch (e) {
+    debugPrint('⚠️ Error detectando red: $e');
+  }
+
+  // ============================================
+  // ✅ PASO 3: Cargar tokens en AMBOS servicios
   // ============================================
   final authService = AuthService();
+  final apiClient = ApiClient(); // ✅ AGREGADO
+
+  // Cargar en AuthService
   await authService.loadTokens();
 
-  // ============================================
-  // PASO 3: Verificar si hay token válido
-  // ============================================
+  // ✅ CRÍTICO: Cargar también en ApiClient
+  await apiClient.loadTokens();
+
   bool hasToken = await authService.hasStoredTokens();
-  debugPrint('Token guardado: $hasToken');
+  debugPrint('🔑 Token guardado: $hasToken');
+
+  // ✅ Verificar que ApiClient también tiene el token
+  if (hasToken && apiClient.accessToken != null) {
+    debugPrint('✅ Token cargado correctamente en ApiClient');
+    debugPrint('   Token: ${apiClient.accessToken!.substring(0, 20)}...');
+  } else if (hasToken && apiClient.accessToken == null) {
+    debugPrint('⚠️ ADVERTENCIA: AuthService tiene token pero ApiClient NO');
+  }
 
   // ============================================
-  // PASO 4: Inicializar detección de red
+  // PASO 4: Inicializar notificaciones (si hay token)
   // ============================================
-  await NetworkInitializer.initialize();
-
-  // ============================================
-  // PASO 5: Inicializar notificaciones push (si hay token)
-  // ============================================
-  if (hasToken) {
+  if (hasToken && apiClient.accessToken != null) {
     try {
-      debugPrint('🔔 Inicializando servicio de notificaciones...');
+      debugPrint('📱 Inicializando servicio de notificaciones...');
       final notificationService = NotificationService();
       await notificationService.initialize();
       debugPrint('✅ Notificaciones inicializadas');
@@ -73,32 +89,45 @@ void main() async {
   }
 
   // ============================================
-  // 🚀 PASO 6: Iniciar envío de ubicación
+  // ✅ PASO 5: Iniciar envío de ubicación (con delay)
   // ============================================
-  if (hasToken) {
+  if (hasToken && apiClient.accessToken != null) {
     try {
-      debugPrint('📍 Inicializando servicio de ubicación...');
-      final ubicacionService = UbicacionService();
-      ubicacionService.iniciarEnvioPeriodico(
-        intervalo: const Duration(seconds: 30),
-      );
-      debugPrint('✅ Envío de ubicación iniciado correctamente');
+      debugPrint('📍 Programando inicio de servicio de ubicación...');
+
+      // ✅ Esperar 3 segundos para asegurar que todo esté listo
+      Future.delayed(const Duration(seconds: 3), () async {
+        try {
+          debugPrint('🚀 Iniciando servicio de ubicación...');
+          final ubicacionService = UbicacionService();
+
+          final exito = await ubicacionService.iniciarEnvioPeriodico(
+            intervalo: const Duration(seconds: 30),
+          );
+
+          if (exito) {
+            debugPrint('✅ Envío de ubicación iniciado correctamente');
+          } else {
+            debugPrint('❌ No se pudo iniciar el envío de ubicación');
+          }
+        } catch (e) {
+          debugPrint('❌ Error iniciando servicio de ubicación: $e');
+        }
+      });
     } catch (e) {
-      debugPrint('⚠️ Error iniciando servicio de ubicación: $e');
+      debugPrint('⚠️ Error programando servicio de ubicación: $e');
     }
+  } else {
+    debugPrint('ℹ️ No se inicia servicio de ubicación (sin token válido)');
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // ✅ PASO 7: Determinar ruta inicial (CORREGIDO)
-  // ════════════════════════════════════════════════════════════════════════
-  // 🎯 CORRECCIÓN CRÍTICA: Usar Router para detectar rol automáticamente
-  // El Router verifica el rol del usuario y redirige a la pantalla correcta:
-  //   - USUARIO → /inicio
-  //   - REPARTIDOR → /repartidor/home
-  //   - PROVEEDOR → /proveedor/home
-  // ════════════════════════════════════════════════════════════════════════
-  String initialRoute = hasToken ? Rutas.router : Rutas.login;
-  debugPrint('Ruta inicial: $initialRoute');
+  // ============================================
+  // PASO 6: Determinar ruta inicial
+  // ============================================
+  String initialRoute = (hasToken && apiClient.accessToken != null)
+      ? Rutas.router
+      : Rutas.login;
+  debugPrint('🗺️ Ruta inicial: $initialRoute');
 
   runApp(MyApp(initialRoute: initialRoute));
 }

@@ -4,9 +4,13 @@ from django.db.models import Q, F
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
-
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from authentication.models import User
+import logging  # ✅ AGREGAR
 # Ajusta este import a tu proyecto real
 from authentication.models import User
+logger = logging.getLogger('repartidores')  # ✅ AGREGAR
 
 
 # ==============================
@@ -366,3 +370,33 @@ class CalificacionCliente(TimeStampedModel):
 
     def __str__(self):
         return f"{self.cliente_id}/{self.pedido_id} ← {self.puntuacion}"
+    
+
+@receiver(post_save, sender=User)
+def crear_repartidor_automatico(sender, instance, created, **kwargs):
+    """
+    ✅ Crea automáticamente un registro Repartidor 
+    cuando se registra un User con rol REPARTIDOR
+    """
+    # Solo para usuarios nuevos con rol REPARTIDOR
+    if created and instance.rol == User.RolChoices.REPARTIDOR:
+        try:
+            # Verificar si ya existe (por si acaso)
+            if not hasattr(instance, 'repartidor'):
+                repartidor = Repartidor.objects.create(
+                    user=instance,
+                    cedula=instance.celular or '0000000000',  # Temporal
+                    telefono=instance.celular,
+                    estado=EstadoRepartidor.FUERA_SERVICIO,
+                    verificado=False,  # Admin debe verificarlo
+                    activo=True,
+                )
+                logger.info(
+                    f"✅ Repartidor creado automáticamente para {instance.email} "
+                    f"(ID: {repartidor.id})"
+                )
+        except Exception as e:
+            logger.error(
+                f"❌ Error creando Repartidor para {instance.email}: {e}",
+                exc_info=True
+            )

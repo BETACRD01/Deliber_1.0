@@ -7,11 +7,12 @@ class ApiConfig {
   // 🌐 CONFIGURACIÓN DE REDES
   // ==========================================
 
+  // TODO PRODUCCIÓN: Cambiar estas IPs cuando despliegues
   static const String redCasaPrefix = '192.168.1';
   static const String ipServidorCasa = '192.168.1.4';
 
   static const String redInstitucionalPrefix = '172.16';
-  static const String ipServidorInstitucional = '172.16.60.4';
+  static const String ipServidorInstitucional = '172.16.60.5';
 
   static const String redHotspotPrefix = '192.168.137';
   static const String ipServidorHotspot = '192.168.137.1';
@@ -20,9 +21,44 @@ class ApiConfig {
 
   static String? _cachedServerIp;
   static String? _lastDetectedNetwork;
+  static bool _isInitialized = false; // ✅ NUEVO: Flag de inicialización
 
   // ==========================================
-  // ✅ DETECCIÓN AUTOMÁTICA DE RED
+  // 🚀 INICIALIZACIÓN (NUEVO - LLAMAR AL INICIO)
+  // ==========================================
+
+  /// ✅ NUEVO: Inicializa la detección de red ANTES de cualquier petición
+  /// Llama esto en main.dart antes de hacer requests
+  static Future<void> initialize() async {
+    if (_isInitialized) {
+      developer.log('ℹ️ ApiConfig ya inicializado', name: 'JP Express API');
+      return;
+    }
+
+    try {
+      developer.log('🌐 Detectando red...', name: 'JP Express API');
+      await detectServerIp();
+      _isInitialized = true;
+      developer.log(
+        '✅ ApiConfig inicializado correctamente',
+        name: 'JP Express API',
+      );
+      await printDebugInfo();
+    } catch (e) {
+      developer.log(
+        '❌ Error inicializando ApiConfig: $e',
+        name: 'JP Express API',
+        error: e,
+      );
+      // Usar configuración por defecto
+      _cachedServerIp = ipServidorCasa;
+      _lastDetectedNetwork = 'CASA (Fallback)';
+      _isInitialized = true;
+    }
+  }
+
+  // ==========================================
+  // ✅ DETECCIÓN AUTOMÁTICA DE RED (MEJORADA)
   // ==========================================
 
   static Future<String> detectServerIp() async {
@@ -35,6 +71,8 @@ class ApiConfig {
           '⚠️ No se pudo detectar IP WiFi, usando servidor casa',
           name: 'JP Express API',
         );
+        _cachedServerIp = ipServidorCasa; // ✅ MEJORADO: Cachea la IP
+        _lastDetectedNetwork = 'CASA (Sin WiFi)';
         return _buildUrl(ipServidorCasa);
       }
 
@@ -43,18 +81,24 @@ class ApiConfig {
       if (wifiIP.startsWith(redCasaPrefix)) {
         _lastDetectedNetwork = 'CASA';
         _cachedServerIp = ipServidorCasa;
-        developer.log('🏠 Red detectada: CASA', name: 'JP Express API');
+        developer.log(
+          '🏠 Red detectada: CASA ($ipServidorCasa)',
+          name: 'JP Express API',
+        ); // ✅ MEJORADO: Muestra IP
         return _buildUrl(ipServidorCasa);
       } else if (wifiIP.startsWith(redHotspotPrefix)) {
         _lastDetectedNetwork = 'HOTSPOT';
         _cachedServerIp = ipServidorHotspot;
-        developer.log('📱 Red detectada: HOTSPOT', name: 'JP Express API');
+        developer.log(
+          '📱 Red detectada: HOTSPOT ($ipServidorHotspot)',
+          name: 'JP Express API',
+        );
         return _buildUrl(ipServidorHotspot);
       } else if (wifiIP.startsWith(redInstitucionalPrefix)) {
         _lastDetectedNetwork = 'INSTITUCIONAL';
         _cachedServerIp = ipServidorInstitucional;
         developer.log(
-          '🏢 Red detectada: INSTITUCIONAL',
+          '🏢 Red detectada: INSTITUCIONAL ($ipServidorInstitucional)',
           name: 'JP Express API',
         );
         return _buildUrl(ipServidorInstitucional);
@@ -74,6 +118,7 @@ class ApiConfig {
         error: e,
       );
       _cachedServerIp = ipServidorCasa;
+      _lastDetectedNetwork = 'ERROR (Fallback)';
       return _buildUrl(ipServidorCasa);
     }
   }
@@ -82,11 +127,12 @@ class ApiConfig {
     return 'http://$ip:$puertoServidor';
   }
 
+  // ✅ MANTIENE compatibilidad con código existente
   static Future<String> getBaseUrl() async {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
 
     if (isProduction) {
-      return 'https://api.jpexpress.com';
+      return 'https://api.jpexpress.com'; // TODO PRODUCCIÓN: Cambiar dominio
     } else {
       if (_cachedServerIp != null) {
         return _buildUrl(_cachedServerIp!);
@@ -131,7 +177,7 @@ class ApiConfig {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
 
     if (isProduction) {
-      return 'https://api.jpexpress.com';
+      return 'https://api.jpexpress.com'; // TODO PRODUCCIÓN: Cambiar dominio
     }
 
     if (_forceManualIp && _manualIp != null) {
@@ -140,6 +186,14 @@ class ApiConfig {
 
     if (_cachedServerIp != null) {
       return _buildUrl(_cachedServerIp!);
+    }
+
+    // ✅ MEJORADO: Log de advertencia si se usa sin inicializar
+    if (!_isInitialized) {
+      developer.log(
+        '⚠️ baseUrl usado antes de initialize(), usando casa',
+        name: 'JP Express API',
+      );
     }
 
     return _buildUrl(ipServidorCasa);
@@ -254,16 +308,18 @@ class ApiConfig {
   static String repartidorCalificarCliente(int pedidoId) =>
       '$apiUrl/repartidores/calificaciones/clientes/$pedidoId/';
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════════════
   // 🔑 API KEYS PARA DOBLE AUTENTICACIÓN
-  // ══════════════════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════════════
 
   /// API Key para la aplicación móvil
+  /// TODO PRODUCCIÓN: Cambiar estas API Keys cuando despliegues
   /// IMPORTANTE: Esta clave debe coincidir con API_KEY_MOBILE en el backend (.env)
   static const String apiKeyMobile =
       'mobile_app_deliber_2025_aW7xK3pM9qR5tL2nV8jH4cF6gB1dY0sZ';
 
   /// API Key para el panel web admin (por si creas uno en Flutter Web)
+  /// IMPORTANTE: Esta clave debe coincidir con API_KEY_WEB en el backend (.env)
   static const String apiKeyWeb =
       'web_admin_deliber_2025_XkJ9mP3nQ7wR2vL5zT8hF1cY4gN6sB0d';
 
@@ -324,7 +380,7 @@ class ApiConfig {
       'Demasiados intentos. Espera un momento e intenta nuevamente.';
 
   // ==========================================
-  // 📱 INFORMACIÓN DE DEBUG
+  // 📱 INFORMACIÓN DE DEBUG (MEJORADA)
   // ==========================================
   static Future<void> printDebugInfo() async {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
@@ -347,15 +403,23 @@ class ApiConfig {
     developer.log('API URL: $apiUrl', name: 'JP Express API');
 
     if (_lastDetectedNetwork != null) {
-      String emoji = _lastDetectedNetwork == 'CASA'
+      String emoji = _lastDetectedNetwork!.contains('CASA')
           ? '🏠'
-          : _lastDetectedNetwork == 'HOTSPOT'
+          : _lastDetectedNetwork!.contains('HOTSPOT')
           ? '📱'
-          : _lastDetectedNetwork == 'INSTITUCIONAL'
+          : _lastDetectedNetwork!.contains('INSTITUCIONAL')
           ? '🏢'
           : '❓';
       developer.log(
         'Red Actual: $emoji $_lastDetectedNetwork',
+        name: 'JP Express API',
+      );
+    }
+
+    // ✅ NUEVO: Muestra IP del servidor
+    if (_cachedServerIp != null) {
+      developer.log(
+        'IP Servidor: $_cachedServerIp:$puertoServidor',
         name: 'JP Express API',
       );
     }
@@ -403,7 +467,7 @@ class ApiConfig {
   }
 
   // ==========================================
-  // 🔧 UTILIDADES
+  // 🔧 UTILIDADES (MEJORADAS)
   // ==========================================
   static bool get isProduction => bool.fromEnvironment('dart.vm.product');
   static bool get isDevelopment => !isProduction;
@@ -411,6 +475,7 @@ class ApiConfig {
   static bool get isHttp => baseUrl.startsWith('http://');
   static String? get currentNetwork => _lastDetectedNetwork;
   static String? get currentServerIp => _cachedServerIp;
+  static bool get isInitialized => _isInitialized; // ✅ NUEVO
 
   static String getMediaUrl(String? path) {
     if (path == null || path.isEmpty) return '';
