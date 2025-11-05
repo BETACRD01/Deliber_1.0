@@ -1,0 +1,229 @@
+# ==========================================
+# .gitignore - Proyecto Completo
+# Backend Django + Mobile Flutter + Docker
+# ==========================================
+
+# ==========================================
+# PYTHON / DJANGO BACKEND
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Entornos virtuales Python
+venv/
+.venv/
+ENV/
+env/
+.env/
+.virtualenv/
+backend/venv/
+backend/.venv/
+
+# Django específico
+*.log
+db.sqlite3
+db.sqlite3-journal
+/media/
+/staticfiles/
+/static/
+backend/media/
+backend/staticfiles/
+backend/static/
+local_settings.py
+
+# Variables de entorno y configuración sensible
+.env
+.env.local
+.env.development
+.env.production
+*.env
+backend/.env
+backend/.env.local
+
+# Testing Python/Django
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+.pytype/
+cov.xml
+*.cover
+.cache
+nosetests.xml
+coverage.xml
+celerybeat-schedule
+celerybeat.pid
+
+# ==========================================
+# FLUTTER / MOBILE
+# ==========================================
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/.pub-cache/
+mobile/.pub/
+mobile/build/
+
+# iOS específico
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Runner.xcworkspace/
+mobile/ios/Runner.xcodeproj/project.pbxproj
+mobile/ios/Flutter/App.framework
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Flutter.podspec
+
+# Android específico
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/captures/
+mobile/android/local.properties
+mobile/android/key.properties
+mobile/android/app/release/
+mobile/android/app/debug/
+mobile/android/.idea/
+*.jks
+*.keystore
+
+# Flutter archivos generados
+*.g.dart
+*.freezed.dart
+*.gr.dart
+*.mocks.dart
+
+# ==========================================
+# DOCKER
+# ==========================================
+# Mantener docker-compose.yml y Dockerfile
+# pero ignorar volúmenes y datos persistentes
+.docker/
+docker-data/
+postgres-data/
+mysql-data/
+
+# ==========================================
+# IDE y EDITORES
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+*.iml
+
+# ==========================================
+# SISTEMAS OPERATIVOS
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ==========================================
+# NODE MODULES (si los usas)
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.npm
+
+# ==========================================
+# LOGS
+# ==========================================
+*.log
+logs/
+*.log.*
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================================
+# BASES DE DATOS LOCALES
+# ==========================================
+*.sqlite
+*.sqlite3
+*.db
+
+# ==========================================
+# CERTIFICADOS y KEYS (SEGURIDAD)
+# ==========================================
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+secrets/
+credentials/
+
+# ==========================================
+# ARCHIVOS TEMPORALES
+# ==========================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+
+# ==========================================
+# TESTING y COVERAGE
+# ==========================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pylint.d/
+.ruff_cache/
+
+# ==========================================
+# BACKUPS Y DUMPS
+# ==========================================
+backups/
+*.sql
+*.dump
+
+# ==========================================
+# Firebase y credenciales
+# ==========================================
+backend/firebase-credentials.json
+firebase-credentials.json
+*-credentials.json
+backend/firebase-credentials.json

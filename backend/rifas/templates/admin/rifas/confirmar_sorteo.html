@@ -1,0 +1,94 @@
+<!-- Crear: templates/admin/rifas/confirmar_sorteo.html -->
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Confirmar Sorteo - {{ rifa.titulo }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Inicio</a>
+    &rsaquo; <a href="{% url 'admin:rifas_rifa_changelist' %}">Rifas</a>
+    &rsaquo; <a href="{% url 'admin:rifas_rifa_change' rifa.id %}">{{ rifa.titulo }}</a>
+    &rsaquo; Confirmar Sorteo
+</div>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <h1>🎲 Confirmar Sorteo</h1>
+
+    <div style="background: #fff3cd; border: 2px solid #ffc107; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h2 style="margin-top: 0;">⚠️ ¿Estás seguro?</h2>
+        <p><strong>Esta acción no se puede deshacer.</strong></p>
+        <p>Se seleccionará aleatoriamente un ganador entre los participantes elegibles.</p>
+    </div>
+
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h3>📋 Información de la Rifa</h3>
+        <table style="width: 100%;">
+            <tr>
+                <td><strong>Título:</strong></td>
+                <td>{{ rifa.titulo }}</td>
+            </tr>
+            <tr>
+                <td><strong>Premio:</strong></td>
+                <td>{{ rifa.premio }}</td>
+            </tr>
+            <tr>
+                <td><strong>Valor:</strong></td>
+                <td>${{ rifa.valor_premio }}</td>
+            </tr>
+            <tr>
+                <td><strong>Período:</strong></td>
+                <td>{{ rifa.fecha_inicio|date:"d/m/Y" }} - {{ rifa.fecha_fin|date:"d/m/Y" }}</td>
+            </tr>
+            <tr>
+                <td><strong>Participantes Elegibles:</strong></td>
+                <td><strong style="color: #28a745; font-size: 1.2em;">{{ total_participantes }}</strong></td>
+            </tr>
+        </table>
+    </div>
+
+    {% if total_participantes > 0 %}
+    <div style="background: #d4edda; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h3>👥 Primeros Participantes</h3>
+        <ul style="max-height: 300px; overflow-y: auto;">
+            {% for participante in participantes %}
+            <li>
+                <strong>{{ participante.get_full_name }}</strong> ({{ participante.email }})
+            </li>
+            {% endfor %}
+            {% if total_participantes > 20 %}
+            <li><em>... y {{ total_participantes|add:"-20" }} participantes más</em></li>
+            {% endif %}
+        </ul>
+    </div>
+
+    <form method="post" style="margin: 30px 0;">
+        {% csrf_token %}
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button type="submit"
+                    class="button"
+                    style="background-color: #28a745; color: white; padding: 15px 30px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer;">
+                🎲 Confirmar y Realizar Sorteo
+            </button>
+            <a href="{% url 'admin:rifas_rifa_change' rifa.id %}"
+               class="button"
+               style="background-color: #6c757d; color: white; padding: 15px 30px; font-size: 16px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                ❌ Cancelar
+            </a>
+        </div>
+    </form>
+    {% else %}
+    <div style="background: #f8d7da; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+        <h3 style="color: #721c24;">⚠️ No se puede realizar el sorteo</h3>
+        <p>No hay participantes elegibles para esta rifa.</p>
+        <a href="{% url 'admin:rifas_rifa_change' rifa.id %}"
+           class="button"
+           style="background-color: #6c757d; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">
+            Volver
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

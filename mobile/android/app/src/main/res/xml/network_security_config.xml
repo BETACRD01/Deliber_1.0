@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- ============================================ -->
+    <!-- PRODUCCIÓN: Solo HTTPS (dominio real)        -->
+    <!-- ============================================ -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.jpexpress.com</domain>
+    </domain-config>
+
+    <!-- ============================================ -->
+    <!-- DESARROLLO: Permitir HTTP (IPs locales)      -->
+    <!-- ============================================ -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Dispositivo físico -->
+        <domain includeSubdomains="true">192.168.1.4</domain>
+        
+        <!-- Emulador Android -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        
+        <!-- Localhost -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+
+    <!-- ============================================ -->
+    <!-- BASE CONFIG: Por defecto requiere HTTPS      -->
+    <!-- pero permite HTTP en dominios específicos    -->
+    <!-- ============================================ -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

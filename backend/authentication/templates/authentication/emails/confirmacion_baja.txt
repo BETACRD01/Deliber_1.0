@@ -1,0 +1,50 @@
+═══════════════════════════════════════════════════
+🚚 JP EXPRESS - CONFIRMACIÓN DE BAJA
+═══════════════════════════════════════════════════
+
+Hola {{ user.first_name }},
+
+Confirmamos que has sido DADO DE BAJA de nuestras notificaciones por email.
+
+Lamentamos verte partir, pero respetamos tu decisión.
+
+───────────────────────────────────────────────────
+📭 YA NO RECIBIRÁS ESTOS CORREOS:
+───────────────────────────────────────────────────
+
+✓ Actualizaciones de pedidos
+✓ Promociones y ofertas especiales
+✓ Noticias y novedades
+✓ Newsletters informativos
+
+───────────────────────────────────────────────────
+⚠️ IMPORTANTE
+───────────────────────────────────────────────────
+
+Aún recibirás correos esenciales relacionados con la seguridad de tu cuenta, como:
+
+• Recuperación de contraseña
+• Cambios importantes en tu cuenta
+• Notificaciones de seguridad
+
+───────────────────────────────────────────────────
+¿CAMBIASTE DE OPINIÓN?
+───────────────────────────────────────────────────
+
+Puedes reactivar las notificaciones en cualquier momento desde tu perfil:
+
+{{ resubscribe_url }}
+
+───────────────────────────────────────────────────
+
+Si tienes alguna pregunta o sugerencia, nuestro equipo de soporte está disponible para ayudarte.
+
+Saludos cordiales,
+El equipo de JP Express
+
+═══════════════════════════════════════════════════
+Este es un correo de confirmación. No es necesario responder.
+
+© {{ year }} JP Express. Todos los derechos reservados.
+Puyo, Pastaza, Ecuador
+═══════════════════════════════════════════════════

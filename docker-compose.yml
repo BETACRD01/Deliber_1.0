@@ -1,0 +1,252 @@
+services:
+  # ==========================================
+  # BASE DE DATOS POSTGRESQL
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: deliber_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
+      POSTGRES_DB: ${POSTGRES_DB:-deliber_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-deliber_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - deliber_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # ==========================================
+  # REDIS PARA CACHÉ Y CELERY
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: deliber_redis
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-redis123}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - deliber_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ==========================================
+  # BACKEND DJANGO
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: final
+    container_name: deliber_backend
+    command: runserver
+    env_file:
+      - ./backend/.env
+    environment:
+      - DEBUG=${DEBUG:-True}
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # En desarrollo: montar código para hot-reload
+      - ./backend:/app:delegated
+      # Volúmenes persistentes
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+      # Firebase credentials (solo lectura)
+      - ./backend/firebase-credentials.json:/app/firebase-credentials.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/admin/login/?next=/admin/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - deliber_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+
+  # ==========================================
+  # CELERY WORKER
+  # ==========================================
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: final
+    container_name: deliber_celery_worker
+    command: celery_worker
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app:delegated
+      - media_data:/app/media
+      - ./backend/firebase-credentials.json:/app/firebase-credentials.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - deliber_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 768M
+
+  # ==========================================
+  # CELERY BEAT (TAREAS PROGRAMADAS)
+  # ==========================================
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: final
+    container_name: deliber_celery_beat
+    command: celery_beat
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app:delegated
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - deliber_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ==========================================
+  # FLOWER (MONITOREO DE CELERY)
+  # ==========================================
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: final
+    container_name: deliber_flower
+    command: flower
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FLOWER_USER=${FLOWER_USER:-admin}
+      - FLOWER_PASSWORD=${FLOWER_PASSWORD:-admin123}
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    volumes:
+      - ./backend:/app:delegated
+    depends_on:
+      - redis
+      - celery_worker
+    networks:
+      - deliber_network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ==========================================
+  # ADMINER (GESTIÓN DE BASE DE DATOS)
+  # ==========================================
+  adminer:
+    image: adminer:latest
+    container_name: deliber_adminer
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: nette
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - deliber_network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+# ==========================================
+# VOLÚMENES
+# ==========================================
+volumes:
+  postgres_data:
+    driver: local
+    name: deliber_postgres_data
+  redis_data:
+    driver: local
+    name: deliber_redis_data
+  media_data:
+    driver: local
+    name: deliber_media_data
+  static_data:
+    driver: local
+    name: deliber_static_data
+
+# ==========================================
+# RED
+# ==========================================
+networks:
+  deliber_network:
+    driver: bridge
+    name: deliber_network

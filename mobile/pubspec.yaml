@@ -1,0 +1,86 @@
+# ============================================
+# CONFIGURACIÓN DEL PROYECTO
+# ============================================
+name: mobile
+description: "Aplicación móvil para gestión de pedidos, productos y rifas"
+publish_to: 'none'
+version: 1.0.0+1
+
+# ============================================
+# ENTORNO
+# ============================================
+environment:
+  sdk: ^3.9.2
+
+# ============================================
+# DEPENDENCIAS
+# ============================================
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.5.0
+  flutter_secure_storage: ^9.2.4
+  shared_preferences: ^2.5.3
+  provider: ^6.1.5+1
+  logger: ^2.6.2
+
+  # ✅ Localizaciones oficiales del SDK
+  flutter_localizations:
+    sdk: flutter
+
+  # 🌐 Redes y conectividad
+  network_info_plus: ^7.0.0       # ✅ compatible con Gradle 8
+  geolocator: ^12.0.0            # ✅ corrige uso de API Android
+  permission_handler: ^11.3.1
+
+
+  # 🔥 Firebase & notificaciones
+  firebase_core: ^3.6.0
+  firebase_messaging: ^15.1.5
+  flutter_local_notifications: ^18.0.1
+
+
+  # 📸 Multimedia
+  image_picker: ^1.1.2            # ✅ versión estable compatible
+  image: ^4.5.4
+
+  # 🎨 Interfaz y estilos
+  font_awesome_flutter: ^10.11.0
+  flutter_riverpod: ^3.0.3
+
+  # ⚙️ Utilidades
+  http_parser: ^4.1.2
+  cached_network_image: ^3.4.1
+  geocoding: ^4.0.0
+  google_maps_flutter: ^2.13.1
+
+# ============================================
+# DEPENDENCIAS DE DESARROLLO
+# ============================================
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# ============================================
+# CONFIGURACIÓN DEL ICONO
+# ============================================
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/logo_icon.png"
+  adaptive_icon_background: "#87CEEB"
+  adaptive_icon_foreground: "assets/icon/logo_icon.png"
+  remove_alpha_ios: true
+  min_sdk_android: 21
+
+# ============================================
+# ASSETS
+# ============================================
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/logo.gif
+    - assets/icon/logo.png

@@ -1,0 +1,76 @@
+═══════════════════════════════════════════════════
+🚚 JP EXPRESS - ¡BIENVENIDO!
+═══════════════════════════════════════════════════
+
+¡Hola {{ user.first_name }}! 🎉
+
+Nos alegra mucho tenerte con nosotros. Tu cuenta ha sido creada exitosamente y ya puedes comenzar a disfrutar de todos nuestros servicios.
+
+Te registraste como: {{ user.get_rol_display }}
+
+───────────────────────────────────────────────────
+{% if user.es_usuario %}
+📦 REALIZA PEDIDOS
+   Solicita entregas rápidas y seguras en cualquier momento.
+
+📍 RASTREA EN TIEMPO REAL
+   Sigue el estado de tus pedidos en todo momento.
+
+⭐ CALIFICA EL SERVICIO
+   Tu opinión nos ayuda a mejorar constantemente.
+{% endif %}
+
+{% if user.es_repartidor %}
+🚗 RECIBE PEDIDOS
+   Gestiona tus entregas y optimiza tus rutas.
+
+💰 GANA DINERO
+   Aumenta tus ingresos con cada entrega completada.
+
+📊 ESTADÍSTICAS
+   Visualiza tu rendimiento y mejora tus resultados.
+{% endif %}
+
+{% if user.es_proveedor %}
+🏪 GESTIONA TU NEGOCIO
+   Administra tus productos y pedidos fácilmente.
+
+📊 ESTADÍSTICAS
+   Visualiza el rendimiento de tu negocio.
+
+🎯 ALCANZA MÁS CLIENTES
+   Aumenta tu visibilidad y ventas.
+{% endif %}
+───────────────────────────────────────────────────
+
+🚀 COMENZAR AHORA
+{{ app_url }}
+
+───────────────────────────────────────────────────
+💡 CONSEJO
+───────────────────────────────────────────────────
+
+Completa tu perfil con toda tu información para obtener una mejor experiencia y acceso a todas las funcionalidades de la plataforma.
+
+───────────────────────────────────────────────────
+
+Si tienes alguna pregunta o necesitas ayuda, nuestro equipo de soporte está disponible para asistirte.
+
+¡Bienvenido a la familia JP Express!
+
+Saludos cordiales,
+El equipo de JP Express
+
+═══════════════════════════════════════════════════
+¿NO QUIERES RECIBIR MÁS EMAILS?
+═══════════════════════════════════════════════════
+
+Si prefieres no recibir más correos de JP Express, puedes darte de baja aquí:
+{{ unsubscribe_url }}
+
+═══════════════════════════════════════════════════
+Este es un correo automático, por favor no respondas directamente a este mensaje.
+
+© {{ year }} JP Express. Todos los derechos reservados.
+Puyo, Pastaza, Ecuador
+═══════════════════════════════════════════════════

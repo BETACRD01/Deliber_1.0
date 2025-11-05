@@ -1,0 +1,141 @@
+# ==========================================
+# .dockerignore - Archivos a ignorar en Docker
+# ==========================================
+
+# ==========================================
+# GIT
+# ==========================================
+.git
+.gitignore
+.gitattributes
+.github
+
+# ==========================================
+# PYTHON
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.manifest
+*.spec
+
+# ==========================================
+# ENTORNOS VIRTUALES
+# ==========================================
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# ==========================================
+# TESTING
+# ==========================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# ==========================================
+# DJANGO
+# ==========================================
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media
+/staticfiles
+celerybeat-schedule
+celerybeat.pid
+
+# ==========================================
+# IDEs
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# ==========================================
+# DOCKER
+# ==========================================
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile
+.dockerignore
+
+# ==========================================
+# DOCUMENTACIÓN
+# ==========================================
+README.md
+README.rst
+docs/
+*.md
+LICENSE
+
+# ==========================================
+# ARCHIVOS TEMPORALES
+# ==========================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+
+# ==========================================
+# NODE (si usas frontend)
+# ==========================================
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# ==========================================
+# BACKUPS Y DUMPS
+# ==========================================
+backups/
+*.sql
+*.dump
+
+# ==========================================
+# OTROS
+# ==========================================
+.env.example
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+
+# ==========================================
+# FLUTTER/MOBILE (NO se dockeriza)
+# ==========================================
+mobile/
