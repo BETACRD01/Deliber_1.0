@@ -245,11 +245,25 @@ backups/
 *.dump
 
 # ==========================================
-# Firebase y credenciales
+# FIREBASE Y GOOGLE SERVICES (CRÍTICO)
 # ==========================================
-backend/firebase-credentials.json
+# Archivos de configuración Firebase
+google-services.json
+GoogleService-Info.plist
 firebase-credentials.json
 *-credentials.json
+
+# Ubicaciones específicas Android
+mobile/android/app/google-services.json
+android/app/google-services.json
+
+# Ubicaciones específicas iOS
+mobile/ios/Runner/GoogleService-Info.plist
+ios/Runner/GoogleService-Info.plist
+
+# Firebase Admin SDK
+backend/firebase-credentials.json
+backend/*-firebase-adminsdk-*.json
 
 # ==========================================
 # ARCHIVOS MISCELÁNEOS
