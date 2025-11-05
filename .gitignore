@@ -88,6 +88,20 @@ mobile/.pub-cache/
 mobile/.pub/
 mobile/build/
 
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+.build/
+.buildlog/
+.history
+migrate_working_dir/
+
 # iOS específico
 mobile/ios/Flutter/flutter_export_environment.sh
 mobile/ios/Flutter/Generated.xcconfig
@@ -108,6 +122,9 @@ mobile/android/key.properties
 mobile/android/app/release/
 mobile/android/app/debug/
 mobile/android/.idea/
+/android/app/debug
+/android/app/profile
+/android/app/release
 *.jks
 *.keystore
 
@@ -116,6 +133,10 @@ mobile/android/.idea/
 *.freezed.dart
 *.gr.dart
 *.mocks.dart
+
+# Symbolication y Obfuscation
+app.*.symbols
+app.*.map.json
 
 # ==========================================
 # DOCKER
@@ -142,6 +163,9 @@ mysql-data/
 *.sublime-project
 *.sublime-workspace
 *.iml
+*.ipr
+*.iws
+.atom/
 
 # ==========================================
 # SISTEMAS OPERATIVOS
@@ -226,6 +250,14 @@ backups/
 backend/firebase-credentials.json
 firebase-credentials.json
 *-credentials.json
+
+# ==========================================
+# ARCHIVOS MISCELÁNEOS
+# ==========================================
+*.class
+*.pyc
+.svn/
+.swiftpm/
 
 # ==========================================
 # FLUTTER: Forzar inclusión de lib/
