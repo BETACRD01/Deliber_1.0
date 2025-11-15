@@ -60,19 +60,29 @@ class _PantallaLoginState extends State<PantallaLogin> {
       _bloqueadoTemporalmente = false;
     });
 
+    // Fragmento para agregar en _login() después del login exitoso
+    // Reemplaza las líneas 58-62 con esto:
+
     try {
       await _api.login(
         email: _usuarioController.text.trim(),
         password: _passwordController.text,
       );
 
-      // ✅ Login exitoso
+      // ✅ LOGIN EXITOSO - Imprimir estado de autenticación
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('🔐 LOGIN EXITOSO - Imprimiendo estado:');
+      _api.imprimirEstadoAuth();
+      debugPrint('═══════════════════════════════════════════════════════');
+
+      // ✅ Navegar al router
       if (mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const PantallaRouter()),
         );
       }
+      // ... resto del código
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {

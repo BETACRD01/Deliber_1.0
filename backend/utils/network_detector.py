@@ -27,12 +27,12 @@ class NetworkDetector:
         return {
             'CASA': {
                 'prefijo': os.getenv('RED_CASA_PREFIX', '192.168.1'),
-                'ip_servidor': os.getenv('RED_CASA_IP', '192.168.1.4'),
+                'ip_servidor': os.getenv('RED_CASA_IP', '192.168.1.5'),  # ✅ CORREGIDO: .4 → .5
                 'descripcion': 'Red domestica WiFi'
             },
             'INSTITUCIONAL': {
                 'prefijo': os.getenv('RED_INSTITUCIONAL_PREFIX', '172.16'),
-                'ip_servidor': os.getenv('RED_INSTITUCIONAL_IP', '172.16.60.5'),
+                'ip_servidor': os.getenv('RED_INSTITUCIONAL_IP', '172.16.60.5'),  # ⚠️ Verificar cuando estés en esa red
                 'descripcion': 'Red institucional'
             },
             'HOTSPOT': {

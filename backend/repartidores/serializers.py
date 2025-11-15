@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.core.validators import RegexValidator
 from django.utils import timezone
+from django.conf import settings
 from math import radians, cos, sin, sqrt, atan2
 from decimal import Decimal
 
@@ -48,15 +49,71 @@ def calcular_distancia(lat1, lon1, lat2, lon2):
 
 
 # ==========================================================
+# ✅ HELPER: Construir URL completa de archivo media
+# ==========================================================
+def construir_url_media(file_field, request=None):
+    """
+    Construye URL completa para un archivo media (FileField/ImageField).
+    
+    Args:
+        file_field: Campo de archivo (FileField/ImageField)
+        request: Request HTTP (opcional, para usar build_absolute_uri)
+    
+    Returns:
+        str: URL completa del archivo, o None si no hay archivo
+    """
+    if not file_field:
+        return None
+    
+    try:
+        url = file_field.url
+        
+        # Si ya es una URL completa HTTP/HTTPS, retornarla
+        if url.startswith('http://') or url.startswith('https://'):
+            return url
+        
+        # Si request está disponible, usar build_absolute_uri (RECOMENDADO)
+        if request is not None:
+            return request.build_absolute_uri(url)
+        
+        # Fallback: Si la URL empieza con file://, extraer la ruta
+        if url.startswith('file://'):
+            path = url.replace('file://', '')
+            # Extraer solo la parte después de /media/
+            if '/media/' in path:
+                relative_path = path.split('/media/')[-1]
+                url = f"{settings.MEDIA_URL}{relative_path}"
+        
+        # Construir URL manualmente usando FRONTEND_URL o configuración
+        base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:8000')
+        base_url = base_url.rstrip('/')
+        
+        return f"{base_url}{url}"
+        
+    except Exception as e:
+        # Log del error si tienes logging configurado
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error construyendo URL de media: {e}")
+        return None
+
+
+# ==========================================================
 # VEHÍCULO
 # ==========================================================
 class RepartidorVehiculoSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    licencia_foto = serializers.SerializerMethodField()  # ✅ Cambiado a SerializerMethodField
 
     class Meta:
         model = RepartidorVehiculo
         fields = ['id', 'tipo', 'tipo_display', 'placa', 'activo', 'licencia_foto', 'creado_en']
         read_only_fields = ['id', 'tipo_display', 'creado_en']
+
+    def get_licencia_foto(self, obj):
+        """✅ Construye URL completa para licencia_foto"""
+        request = self.context.get('request')
+        return construir_url_media(obj.licencia_foto, request)
 
     def validate_placa(self, value):
         """Valida formato básico de placa (opcional, ajusta según tu país)."""
@@ -154,11 +211,12 @@ class CalificacionClienteCreateSerializer(serializers.ModelSerializer):
 
 
 # ==========================================================
-# PERFIL COMPLETO DEL REPARTIDOR (PROPIO)
+# ✅ PERFIL COMPLETO DEL REPARTIDOR (PROPIO) - ACTUALIZADO
 # ==========================================================
 class RepartidorPerfilSerializer(serializers.ModelSerializer):
     nombre_completo = serializers.CharField(source='user.get_full_name', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
+    foto_perfil = serializers.SerializerMethodField()  # ✅ Cambiado a SerializerMethodField
     vehiculos = RepartidorVehiculoSerializer(many=True, read_only=True)
     calificaciones_recientes = serializers.SerializerMethodField()
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
@@ -182,6 +240,11 @@ class RepartidorPerfilSerializer(serializers.ModelSerializer):
             'entregas_completadas', 'calificacion_promedio',
             'creado_en', 'actualizado_en'
         ]
+
+    def get_foto_perfil(self, obj):
+        """✅ Construye URL completa para foto_perfil"""
+        request = self.context.get('request')
+        return construir_url_media(obj.foto_perfil, request)
 
     def get_calificaciones_recientes(self, obj):
         """Retorna las últimas 5 calificaciones."""
@@ -285,10 +348,11 @@ class RepartidorUbicacionSerializer(serializers.Serializer):
 
 
 # ==========================================================
-# PERFIL PÚBLICO (CLIENTE VE AL REPARTIDOR)
+# ✅ PERFIL PÚBLICO (CLIENTE VE AL REPARTIDOR) - ACTUALIZADO
 # ==========================================================
 class RepartidorPublicoSerializer(serializers.ModelSerializer):
     nombre = serializers.CharField(source='user.get_full_name', read_only=True)
+    foto_perfil = serializers.SerializerMethodField()  # ✅ Cambiado a SerializerMethodField
     tipo_vehiculo_activo = serializers.SerializerMethodField()
     placa_vehiculo_activa = serializers.SerializerMethodField()
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
@@ -302,6 +366,11 @@ class RepartidorPublicoSerializer(serializers.ModelSerializer):
             'latitud', 'longitud', 'ultima_localizacion',
             'tipo_vehiculo_activo', 'placa_vehiculo_activa'
         ]
+
+    def get_foto_perfil(self, obj):
+        """✅ Construye URL completa para foto_perfil"""
+        request = self.context.get('request')
+        return construir_url_media(obj.foto_perfil, request)
 
     def get_tipo_vehiculo_activo(self, obj):
         """Retorna el tipo de vehículo activo."""

@@ -1,19 +1,22 @@
 // lib/config/api_config.dart
 import 'dart:developer' as developer;
 import 'package:network_info_plus/network_info_plus.dart';
+import 'package:flutter/material.dart';
 
 class ApiConfig {
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
   // 🌐 CONFIGURACIÓN DE REDES
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
 
-  // TODO PRODUCCIÓN: Cambiar estas IPs cuando despliegues
+  // ✅ RED CASA
   static const String redCasaPrefix = '192.168.1';
-  static const String ipServidorCasa = '192.168.1.4';
+  static const String ipServidorCasa = '192.168.1.5';
 
+  // ✅ RED INSTITUCIONAL - CORREGIDO: 172.16.56.215 → 172.16.60.5
   static const String redInstitucionalPrefix = '172.16';
   static const String ipServidorInstitucional = '172.16.60.5';
 
+  // ✅ RED HOTSPOT
   static const String redHotspotPrefix = '192.168.137';
   static const String ipServidorHotspot = '192.168.137.1';
 
@@ -21,45 +24,42 @@ class ApiConfig {
 
   static String? _cachedServerIp;
   static String? _lastDetectedNetwork;
-  static bool _isInitialized = false; // ✅ NUEVO: Flag de inicialización
+  static bool _isInitialized = false;
 
-  // ==========================================
-  // 🚀 INICIALIZACIÓN (NUEVO - LLAMAR AL INICIO)
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // 🚀 INICIALIZACIÓN
+  // ════════════════════════════════════════════════════════════════════════
 
-  /// ✅ NUEVO: Inicializa la detección de red ANTES de cualquier petición
-  /// Llama esto en main.dart antes de hacer requests
   static Future<void> initialize() async {
     if (_isInitialized) {
-      developer.log('ℹ️ ApiConfig ya inicializado', name: 'JP Express API');
+      developer.log('ℹ️ ApiConfig ya inicializado', name: 'Deliber API');
       return;
     }
 
     try {
-      developer.log('🌐 Detectando red...', name: 'JP Express API');
+      developer.log('🌐 Detectando red...', name: 'Deliber API');
       await detectServerIp();
       _isInitialized = true;
       developer.log(
         '✅ ApiConfig inicializado correctamente',
-        name: 'JP Express API',
+        name: 'Deliber API',
       );
       await printDebugInfo();
     } catch (e) {
       developer.log(
         '❌ Error inicializando ApiConfig: $e',
-        name: 'JP Express API',
+        name: 'Deliber API',
         error: e,
       );
-      // Usar configuración por defecto
       _cachedServerIp = ipServidorCasa;
       _lastDetectedNetwork = 'CASA (Fallback)';
       _isInitialized = true;
     }
   }
 
-  // ==========================================
-  // ✅ DETECCIÓN AUTOMÁTICA DE RED (MEJORADA)
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // ✅ DETECCIÓN AUTOMÁTICA DE RED
+  // ════════════════════════════════════════════════════════════════════════
 
   static Future<String> detectServerIp() async {
     try {
@@ -69,29 +69,29 @@ class ApiConfig {
       if (wifiIP == null || wifiIP.isEmpty) {
         developer.log(
           '⚠️ No se pudo detectar IP WiFi, usando servidor casa',
-          name: 'JP Express API',
+          name: 'Deliber API',
         );
-        _cachedServerIp = ipServidorCasa; // ✅ MEJORADO: Cachea la IP
+        _cachedServerIp = ipServidorCasa;
         _lastDetectedNetwork = 'CASA (Sin WiFi)';
         return _buildUrl(ipServidorCasa);
       }
 
-      developer.log('📱 IP Dispositivo: $wifiIP', name: 'JP Express API');
+      developer.log('📱 IP Dispositivo: $wifiIP', name: 'Deliber API');
 
       if (wifiIP.startsWith(redCasaPrefix)) {
         _lastDetectedNetwork = 'CASA';
         _cachedServerIp = ipServidorCasa;
         developer.log(
           '🏠 Red detectada: CASA ($ipServidorCasa)',
-          name: 'JP Express API',
-        ); // ✅ MEJORADO: Muestra IP
+          name: 'Deliber API',
+        );
         return _buildUrl(ipServidorCasa);
       } else if (wifiIP.startsWith(redHotspotPrefix)) {
         _lastDetectedNetwork = 'HOTSPOT';
         _cachedServerIp = ipServidorHotspot;
         developer.log(
           '📱 Red detectada: HOTSPOT ($ipServidorHotspot)',
-          name: 'JP Express API',
+          name: 'Deliber API',
         );
         return _buildUrl(ipServidorHotspot);
       } else if (wifiIP.startsWith(redInstitucionalPrefix)) {
@@ -99,13 +99,13 @@ class ApiConfig {
         _cachedServerIp = ipServidorInstitucional;
         developer.log(
           '🏢 Red detectada: INSTITUCIONAL ($ipServidorInstitucional)',
-          name: 'JP Express API',
+          name: 'Deliber API',
         );
         return _buildUrl(ipServidorInstitucional);
       } else {
         developer.log(
           '❓ Red desconocida: $wifiIP, usando servidor casa',
-          name: 'JP Express API',
+          name: 'Deliber API',
         );
         _lastDetectedNetwork = 'DESCONOCIDA';
         _cachedServerIp = ipServidorCasa;
@@ -114,7 +114,7 @@ class ApiConfig {
     } catch (e) {
       developer.log(
         '❌ Error detectando red: $e',
-        name: 'JP Express API',
+        name: 'Deliber API',
         error: e,
       );
       _cachedServerIp = ipServidorCasa;
@@ -127,12 +127,11 @@ class ApiConfig {
     return 'http://$ip:$puertoServidor';
   }
 
-  // ✅ MANTIENE compatibilidad con código existente
   static Future<String> getBaseUrl() async {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
 
     if (isProduction) {
-      return 'https://api.jpexpress.com'; // TODO PRODUCCIÓN: Cambiar dominio
+      return 'https://api.deliber.com';
     } else {
       if (_cachedServerIp != null) {
         return _buildUrl(_cachedServerIp!);
@@ -144,13 +143,13 @@ class ApiConfig {
   static Future<String> refreshNetworkDetection() async {
     _cachedServerIp = null;
     _lastDetectedNetwork = null;
-    developer.log('🔄 Forzando re-detección de red...', name: 'JP Express API');
+    developer.log('🔄 Forzando re-detección de red...', name: 'Deliber API');
     return await detectServerIp();
   }
 
-  // ==========================================
-  // 🔧 MODO MANUAL (Para debugging)
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // 🔧 MODO MANUAL
+  // ════════════════════════════════════════════════════════════════════════
 
   static bool _forceManualIp = false;
   static String? _manualIp;
@@ -159,25 +158,25 @@ class ApiConfig {
     _forceManualIp = true;
     _manualIp = ip;
     _cachedServerIp = ip;
-    developer.log('🔧 IP manual forzada: $ip', name: 'JP Express API');
+    developer.log('🔧 IP manual forzada: $ip', name: 'Deliber API');
   }
 
   static void disableManualIp() {
     _forceManualIp = false;
     _manualIp = null;
     _cachedServerIp = null;
-    developer.log('🔄 Modo automático activado', name: 'JP Express API');
+    developer.log('🔄 Modo automático activado', name: 'Deliber API');
   }
 
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
   // 🎯 URL BASE INTELIGENTE
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
 
   static String get baseUrl {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
 
     if (isProduction) {
-      return 'https://api.jpexpress.com'; // TODO PRODUCCIÓN: Cambiar dominio
+      return 'https://api.deliber.com';
     }
 
     if (_forceManualIp && _manualIp != null) {
@@ -188,11 +187,10 @@ class ApiConfig {
       return _buildUrl(_cachedServerIp!);
     }
 
-    // ✅ MEJORADO: Log de advertencia si se usa sin inicializar
     if (!_isInitialized) {
       developer.log(
         '⚠️ baseUrl usado antes de initialize(), usando casa',
-        name: 'JP Express API',
+        name: 'Deliber API',
       );
     }
 
@@ -201,9 +199,24 @@ class ApiConfig {
 
   static String get apiUrl => '$baseUrl/api';
 
-  // ==========================================
-  // 🔐 AUTH ENDPOINTS
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // SOLICITUDES DE CAMBIO DE ROL
+  // ════════════════════════════════════════════════════════════════════════
+  static String get usuariosSolicitudesCambioRol =>
+      '$apiUrl/usuarios/solicitudes-cambio-rol/';
+
+  static String usuariosSolicitudCambioRolDetalle(String id) =>
+      '$apiUrl/usuarios/solicitudes-cambio-rol/$id/';
+
+  static String get usuariosCambiarRolActivo =>
+      '$apiUrl/usuarios/cambiar-rol-activo/';
+
+  static String get usuariosMisRoles => '$apiUrl/usuarios/mis-roles/';
+
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 1: 📝 AUTH ENDPOINTS
+  // ════════════════════════════════════════════════════════════════════════
+
   static String get registro => '$apiUrl/auth/registro/';
   static String get login => '$apiUrl/auth/login/';
   static String get googleLogin => '$apiUrl/auth/google-login/';
@@ -224,9 +237,9 @@ class ApiConfig {
   static String get desactivarCuenta => '$apiUrl/auth/desactivar-cuenta/';
   static String get tokenRefresh => '$apiUrl/auth/token/refresh/';
 
-  // ==========================================
-  // 👤 USUARIOS ENDPOINTS
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 2: 👤 USUARIOS ENDPOINTS
+  // ════════════════════════════════════════════════════════════════════════
 
   // Perfil
   static String get usuariosPerfil => '$apiUrl/usuarios/perfil/';
@@ -264,9 +277,9 @@ class ApiConfig {
   static String get usuariosEstadoNotificaciones =>
       '$apiUrl/usuarios/notificaciones/';
 
-  // ==========================================
-  // 🚚 REPARTIDOR ENDPOINTS
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 3: 🚚 REPARTIDOR ENDPOINTS
+  // ════════════════════════════════════════════════════════════════════════
 
   // Perfil
   static String get repartidorPerfil => '$apiUrl/repartidores/perfil/';
@@ -309,54 +322,273 @@ class ApiConfig {
       '$apiUrl/repartidores/calificaciones/clientes/$pedidoId/';
 
   // ════════════════════════════════════════════════════════════════════════
-  // 🔑 API KEYS PARA DOBLE AUTENTICACIÓN
+  // BLOQUE 4: 🏪 PROVEEDORES ENDPOINTS
   // ════════════════════════════════════════════════════════════════════════
 
-  /// API Key para la aplicación móvil
-  /// TODO PRODUCCIÓN: Cambiar estas API Keys cuando despliegues
-  /// IMPORTANTE: Esta clave debe coincidir con API_KEY_MOBILE en el backend (.env)
+  /// GET - Listar todos los proveedores (filtrado por rol)
+  /// POST - Crear proveedor (solo admin)
+  static String get proveedores => '$apiUrl/proveedores/';
+
+  /// GET - Detalle de un proveedor
+  static String proveedorDetalle(int id) => '$apiUrl/proveedores/$id/';
+
+  /// PUT - Actualizar proveedor completo
+  /// PATCH - Actualizar proveedor parcial
+  /// DELETE - Eliminar proveedor
+  static String proveedorActualizar(int id) => '$apiUrl/proveedores/$id/';
+
+  /// GET - Mi proveedor (usuario con rol PROVEEDOR)
+  static String get miProveedor => '$apiUrl/proveedores/mi_proveedor/';
+
+  static String get miProveedorEditarContacto =>
+      '$apiUrl/proveedores/editar_contacto/';
+
+  /// GET - Proveedores activos
+  static String get proveedoresActivos => '$apiUrl/proveedores/activos/';
+
+  /// GET - Proveedores abiertos ahora
+  static String get proveedoresAbiertos => '$apiUrl/proveedores/abiertos/';
+
+  /// GET - Filtrar por tipo (?tipo=restaurante)
+  static String get proveedoresPorTipo => '$apiUrl/proveedores/por_tipo/';
+
+  /// POST - Activar proveedor (admin only)
+  static String proveedorActivar(int id) => '$apiUrl/proveedores/$id/activar/';
+
+  /// POST - Desactivar proveedor (admin only)
+  static String proveedorDesactivar(int id) =>
+      '$apiUrl/proveedores/$id/desactivar/';
+
+  /// POST - Verificar proveedor (admin only)
+  static String proveedorVerificar(int id) =>
+      '$apiUrl/proveedores/$id/verificar/';
+  // BLOQUE 4: 🏪 PROVEEDORES ENDPOINTS
+
+  /// Construir URL con query params
+  static String buildProveedoresUrl({
+    bool? activos,
+    bool? verificados,
+    String? tipo,
+    String? ciudad,
+    String? search,
+  }) {
+    final params = <String, String>{};
+
+    if (activos != null) params['activos'] = activos.toString();
+    if (verificados != null) params['verificados'] = verificados.toString();
+    if (tipo != null) params['tipo_proveedor'] = tipo;
+    if (ciudad != null) params['ciudad'] = ciudad;
+    if (search != null) params['search'] = search;
+
+    if (params.isEmpty) return proveedores;
+
+    final queryString = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+
+    return '$proveedores?$queryString';
+  }
+
+  /// URL para filtrar por tipo específico
+  static String proveedoresPorTipoUrl(String tipo) =>
+      '$proveedoresPorTipo?tipo=$tipo';
+
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 5: 🛡️ ADMIN ENDPOINTS - PROVEEDORES
+  // ════════════════════════════════════════════════════════════════════════
+
+  /// GET - Listar todos los proveedores (admin)
+  /// Acceso: Solo administrador
+  static String get adminProveedores => '$apiUrl/admin/proveedores/';
+
+  /// GET - Detalle de un proveedor (admin)
+  /// PUT - Editar información completa (admin)
+  /// PATCH - Editar parcialmente (admin)
+  /// DELETE - Eliminar (admin)
+  static String adminProveedorDetalle(int id) =>
+      '$apiUrl/admin/proveedores/$id/';
+
+  /// PATCH - Editar CONTACTO del proveedor (email, nombre, apellido)
+  /// Acceso: Solo administrador
+  /// Body: {email, first_name, last_name}
+  static String adminProveedorEditarContacto(int id) =>
+      '$apiUrl/admin/proveedores/$id/editar_contacto/';
+
+  /// POST - Verificar o rechazar proveedor
+  /// Acceso: Solo administrador
+  /// Body: {verificado: true/false, motivo: "..."}
+  static String adminProveedorVerificar(int id) =>
+      '$apiUrl/admin/proveedores/$id/verificar/';
+
+  /// POST - Desactivar proveedor
+  /// Acceso: Solo administrador
+  static String adminProveedorDesactivar(int id) =>
+      '$apiUrl/admin/proveedores/$id/desactivar/';
+
+  /// POST - Activar proveedor
+  /// Acceso: Solo administrador
+  static String adminProveedorActivar(int id) =>
+      '$apiUrl/admin/proveedores/$id/activar/';
+
+  /// GET - Listar proveedores pendientes de verificación
+  /// Acceso: Solo administrador
+  static String get adminProveedoresPendientes =>
+      '$apiUrl/admin/proveedores/pendientes/';
+
+  // Builder para URLs admin con filtros
+  static String buildAdminProveedoresUrl({
+    bool? verificado,
+    bool? activo,
+    String? tipoProveedor,
+    String? search,
+  }) {
+    final params = <String, String>{};
+
+    if (verificado != null) params['verificado'] = verificado.toString();
+    if (activo != null) params['activo'] = activo.toString();
+    if (tipoProveedor != null) params['tipo_proveedor'] = tipoProveedor;
+    if (search != null) params['search'] = search;
+
+    if (params.isEmpty) return adminProveedores;
+
+    final queryString = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+
+    return '$adminProveedores?$queryString';
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 6: 🛡️ ADMIN ENDPOINTS - REPARTIDORES
+  // ════════════════════════════════════════════════════════════════════════
+
+  /// GET - Listar todos los repartidores (admin)
+  /// Acceso: Solo administrador
+  static String get adminRepartidores => '$apiUrl/admin/repartidores/';
+
+  /// GET - Detalle de un repartidor (admin)
+  /// PUT - Editar información completa (admin)
+  /// PATCH - Editar parcialmente (admin)
+  /// DELETE - Eliminar (admin)
+  static String adminRepartidorDetalle(int id) =>
+      '$apiUrl/admin/repartidores/$id/';
+
+  /// PATCH - Editar CONTACTO del repartidor (email, nombre, apellido)
+  /// Acceso: Solo administrador
+  /// Body: {email, first_name, last_name}
+  static String adminRepartidorEditarContacto(int id) =>
+      '$apiUrl/admin/repartidores/$id/editar_contacto/';
+
+  /// POST - Verificar o rechazar repartidor
+  /// Acceso: Solo administrador
+  /// Body: {verificado: true/false, motivo: "..."}
+  static String adminRepartidorVerificar(int id) =>
+      '$apiUrl/admin/repartidores/$id/verificar/';
+
+  /// POST - Desactivar repartidor
+  /// Acceso: Solo administrador
+  static String adminRepartidorDesactivar(int id) =>
+      '$apiUrl/admin/repartidores/$id/desactivar/';
+
+  /// POST - Activar repartidor
+  /// Acceso: Solo administrador
+  static String adminRepartidorActivar(int id) =>
+      '$apiUrl/admin/repartidores/$id/activar/';
+
+  /// GET - Listar repartidores pendientes de verificación
+  /// Acceso: Solo administrador
+  static String get adminRepartidoresPendientes =>
+      '$apiUrl/admin/repartidores/pendientes/';
+
+  // Builder para URLs admin con filtros
+  static String buildAdminRepartidoresUrl({
+    bool? verificado,
+    bool? activo,
+    String? estado,
+    String? search,
+  }) {
+    final params = <String, String>{};
+
+    if (verificado != null) params['verificado'] = verificado.toString();
+    if (activo != null) params['activo'] = activo.toString();
+    if (estado != null) params['estado'] = estado;
+    if (search != null) params['search'] = search;
+
+    if (params.isEmpty) return adminRepartidores;
+
+    final queryString = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+
+    return '$adminRepartidores?$queryString';
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 7: 🔐 API KEYS PARA DOBLE AUTENTICACIÓN
+  // ════════════════════════════════════════════════════════════════════════
+
   static const String apiKeyMobile =
       'mobile_app_deliber_2025_aW7xK3pM9qR5tL2nV8jH4cF6gB1dY0sZ';
 
-  /// API Key para el panel web admin (por si creas uno en Flutter Web)
-  /// IMPORTANTE: Esta clave debe coincidir con API_KEY_WEB en el backend (.env)
   static const String apiKeyWeb =
       'web_admin_deliber_2025_XkJ9mP3nQ7wR2vL5zT8hF1cY4gN6sB0d';
 
-  /// API Key actual (por defecto móvil)
   static String get currentApiKey => apiKeyMobile;
 
-  // ==========================================
-  // ⏱️ CONFIGURACIÓN DE TIMEOUTS
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 8: ⏱️ CONFIGURACIÓN DE TIMEOUTS
+  // ════════════════════════════════════════════════════════════════════════
+
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30);
   static const Duration sendTimeout = Duration(seconds: 30);
 
-  // ==========================================
-  // 🔄 CONFIGURACIÓN DE RETRY
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 9: 📝 CONFIGURACIÓN DE RETRY
+  // ════════════════════════════════════════════════════════════════════════
+
   static const int maxRetries = 3;
   static const Duration retryDelay = Duration(seconds: 2);
 
-  // ==========================================
-  // 🎯 CONFIGURACIÓN DE CÓDIGO DE RECUPERACIÓN
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 10: 🎯 CONFIGURACIÓN DE CÓDIGO DE RECUPERACIÓN
+  // ════════════════════════════════════════════════════════════════════════
+
   static const int codigoLongitud = 6;
   static const int codigoExpiracionMinutos = 15;
   static const int maxIntentosVerificacion = 5;
 
-  // ==========================================
-  // 👥 ROLES DISPONIBLES
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 11: 👥 ROLES DISPONIBLES
+  // ════════════════════════════════════════════════════════════════════════
+
   static const String rolUsuario = 'USUARIO';
   static const String rolRepartidor = 'REPARTIDOR';
   static const String rolProveedor = 'PROVEEDOR';
   static const String rolAdministrador = 'ADMINISTRADOR';
 
-  // ==========================================
-  // 📊 CÓDIGOS DE RESPUESTA HTTP
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 12: 📊 TIPOS DE PROVEEDOR
+  // ════════════════════════════════════════════════════════════════════════
+
+  static const String tipoRestaurante = 'restaurante';
+  static const String tipoFarmacia = 'farmacia';
+  static const String tipoSupermercado = 'supermercado';
+  static const String tipoTienda = 'tienda';
+  static const String tipoOtro = 'otro';
+
+  static const List<String> tiposProveedor = [
+    tipoRestaurante,
+    tipoFarmacia,
+    tipoSupermercado,
+    tipoTienda,
+    tipoOtro,
+  ];
+
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 13: 📊 CÓDIGOS DE RESPUESTA HTTP
+  // ════════════════════════════════════════════════════════════════════════
+
   static const int statusOk = 200;
   static const int statusCreated = 201;
   static const int statusBadRequest = 400;
@@ -366,9 +598,10 @@ class ApiConfig {
   static const int statusTooManyRequests = 429;
   static const int statusServerError = 500;
 
-  // ==========================================
-  // ❌ MENSAJES DE ERROR
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 14: ❌ MENSAJES DE ERROR
+  // ════════════════════════════════════════════════════════════════════════
+
   static const String errorNetwork = 'Error de conexión. Verifica tu internet.';
   static const String errorTimeout =
       'La petición tardó demasiado. Intenta de nuevo.';
@@ -379,28 +612,29 @@ class ApiConfig {
   static const String errorRateLimit =
       'Demasiados intentos. Espera un momento e intenta nuevamente.';
 
-  // ==========================================
-  // 📱 INFORMACIÓN DE DEBUG (MEJORADA)
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 15: 📱 INFORMACIÓN DE DEBUG
+  // ════════════════════════════════════════════════════════════════════════
+
   static Future<void> printDebugInfo() async {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
     final currentUrl = await getBaseUrl();
 
     developer.log(
-      '╔═══════════════════════════════════════╗',
-      name: 'JP Express API',
+      '╔════════════════════════════════════════════════════════════════╗',
+      name: 'Deliber API',
     );
-    developer.log('🏢 JP Express API Configuration', name: 'JP Express API');
+    developer.log('🢢 Deliber API Configuration', name: 'Deliber API');
     developer.log(
-      '╠═══════════════════════════════════════╣',
-      name: 'JP Express API',
+      '║ ════════════════════════════════════════════════════════════════',
+      name: 'Deliber API',
     );
     developer.log(
       'Environment: ${isProduction ? "🚀 PRODUCTION" : "🛠️ DEVELOPMENT"}',
-      name: 'JP Express API',
+      name: 'Deliber API',
     );
-    developer.log('Base URL: $currentUrl', name: 'JP Express API');
-    developer.log('API URL: $apiUrl', name: 'JP Express API');
+    developer.log('Base URL: $currentUrl', name: 'Deliber API');
+    developer.log('API URL: $apiUrl', name: 'Deliber API');
 
     if (_lastDetectedNetwork != null) {
       String emoji = _lastDetectedNetwork!.contains('CASA')
@@ -412,70 +646,62 @@ class ApiConfig {
           : '❓';
       developer.log(
         'Red Actual: $emoji $_lastDetectedNetwork',
-        name: 'JP Express API',
+        name: 'Deliber API',
       );
     }
 
-    // ✅ NUEVO: Muestra IP del servidor
     if (_cachedServerIp != null) {
       developer.log(
         'IP Servidor: $_cachedServerIp:$puertoServidor',
-        name: 'JP Express API',
+        name: 'Deliber API',
       );
     }
 
     if (_forceManualIp) {
-      developer.log('🔧 Modo Manual: $_manualIp', name: 'JP Express API');
+      developer.log('🔧 Modo Manual: $_manualIp', name: 'Deliber API');
     }
 
     developer.log(
       'Protocol: ${currentUrl.startsWith("https") ? "🔒 HTTPS" : "🔓 HTTP"}',
-      name: 'JP Express API',
+      name: 'Deliber API',
     );
     developer.log(
-      '╠═══════════════════════════════════════╣',
-      name: 'JP Express API',
+      '║ ════════════════════════════════════════════════════════════════',
+      name: 'Deliber API',
     );
-    developer.log('✅ Endpoints Auth:', name: 'JP Express API');
-    developer.log('  Login: $login', name: 'JP Express API');
-    developer.log('  Registro: $registro', name: 'JP Express API');
+    developer.log('✅ Endpoints Proveedores:', name: 'Deliber API');
+    developer.log('  Mi Proveedor: $miProveedor', name: 'Deliber API');
+    developer.log('  Lista: $proveedores', name: 'Deliber API');
+    developer.log('  Activos: $proveedoresActivos', name: 'Deliber API');
+    developer.log('✅ Endpoints Admin Proveedores:', name: 'Deliber API');
+    developer.log('  Listar: $adminProveedores', name: 'Deliber API');
     developer.log(
-      '╠═══════════════════════════════════════╣',
-      name: 'JP Express API',
+      '  Editar Contacto: $adminProveedorEditarContacto(id)',
+      name: 'Deliber API',
     );
-    developer.log('✅ Endpoints Usuarios:', name: 'JP Express API');
-    developer.log('  Perfil: $usuariosPerfil', name: 'JP Express API');
+    developer.log('✅ Endpoints Admin Repartidores:', name: 'Deliber API');
+    developer.log('  Listar: $adminRepartidores', name: 'Deliber API');
     developer.log(
-      '  Direcciones: $usuariosDirecciones',
-      name: 'JP Express API',
-    );
-    developer.log(
-      '╠═══════════════════════════════════════╣',
-      name: 'JP Express API',
-    );
-    developer.log('✅ Endpoints Repartidores:', name: 'JP Express API');
-    developer.log('  Perfil: $repartidorPerfil', name: 'JP Express API');
-    developer.log('  Ubicación: $repartidorUbicacion', name: 'JP Express API');
-    developer.log(
-      '  Pedidos: $repartidorPedidosDisponibles',
-      name: 'JP Express API',
+      '  Editar Contacto: $adminRepartidorEditarContacto(id)',
+      name: 'Deliber API',
     );
     developer.log(
-      '╚═══════════════════════════════════════╝',
-      name: 'JP Express API',
+      '╚════════════════════════════════════════════════════════════════╝',
+      name: 'Deliber API',
     );
   }
 
-  // ==========================================
-  // 🔧 UTILIDADES (MEJORADAS)
-  // ==========================================
+  // ════════════════════════════════════════════════════════════════════════
+  // BLOQUE 16: 🔧 UTILIDADES
+  // ════════════════════════════════════════════════════════════════════════
+
   static bool get isProduction => bool.fromEnvironment('dart.vm.product');
   static bool get isDevelopment => !isProduction;
   static bool get isHttps => baseUrl.startsWith('https');
   static bool get isHttp => baseUrl.startsWith('http://');
   static String? get currentNetwork => _lastDetectedNetwork;
   static String? get currentServerIp => _cachedServerIp;
-  static bool get isInitialized => _isInitialized; // ✅ NUEVO
+  static bool get isInitialized => _isInitialized;
 
   static String getMediaUrl(String? path) {
     if (path == null || path.isEmpty) return '';
@@ -487,6 +713,30 @@ class ApiConfig {
     try {
       final uri = Uri.parse(url);
       return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Validar horarios
+  static bool validarHorarios(String? apertura, String? cierre) {
+    if (apertura == null || cierre == null) return true;
+
+    try {
+      final aperturaTime = TimeOfDay(
+        hour: int.parse(apertura.split(':')[0]),
+        minute: int.parse(apertura.split(':')[1]),
+      );
+
+      final cierreTime = TimeOfDay(
+        hour: int.parse(cierre.split(':')[0]),
+        minute: int.parse(cierre.split(':')[1]),
+      );
+
+      final aperturaMinutes = aperturaTime.hour * 60 + aperturaTime.minute;
+      final cierreMinutes = cierreTime.hour * 60 + cierreTime.minute;
+
+      return cierreMinutes > aperturaMinutes;
     } catch (e) {
       return false;
     }

@@ -9,6 +9,7 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.conf import settings
+from .validators import ValidadorSolicitudCambioRol
 from .models import Perfil, DireccionFavorita, MetodoPago, UbicacionUsuario
 from .serializers import (
     PerfilSerializer,
@@ -26,47 +27,63 @@ from .serializers import (
     UbicacionUsuarioSerializer,
     ActualizarUbicacionSerializer,
 )
+
+from django.core.exceptions import ValidationError
+from .models import SolicitudCambioRol
+from .serializers import (
+    SolicitudCambioRolListSerializer,
+    SolicitudCambioRolDetalleSerializer,
+)
+from usuarios.solicitudes import GestorSolicitudCambioRol, ValidadorSolicitudCambioRol
+
 from PIL import Image
 from io import BytesIO
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import logging
 import os
 
-logger = logging.getLogger('usuarios')
+logger = logging.getLogger("usuarios")
 
 
 # ============================================
 # ✅ THROTTLING CORREGIDO
 # ============================================
 
+
 class UploadThrottle(UserRateThrottle):
     """Límite para subida de archivos (imágenes, comprobantes)"""
-    rate = '30/hour'  # ✅ AUMENTADO: 10 → 30
+
+    rate = "30/hour"  # ✅ AUMENTADO: 10 → 30
 
 
 class FCMThrottle(UserRateThrottle):
     """Límite para registro de tokens FCM"""
-    rate = '60/hour'  # ✅ AUMENTADO: 20 → 60
+
+    rate = "60/hour"  # ✅ AUMENTADO: 20 → 60
 
 
 class UbicacionThrottle(UserRateThrottle):
     """✅ NUEVO: Límite más generoso para ubicación"""
-    rate = '300/hour'  # 5 por minuto, ideal para updates cada 30s
+
+    rate = "300/hour"  # 5 por minuto, ideal para updates cada 30s
 
 
 class PerfilThrottle(UserRateThrottle):
     """✅ NUEVO: Límite específico para actualización de perfil"""
-    rate = '30/hour'
+
+    rate = "30/hour"
 
 
 # ============================================
 # PAGINACIÓN
 # ============================================
 
+
 class StandardResultsSetPagination(PageNumberPagination):
     """Paginación estándar para listados"""
+
     page_size = 20
-    page_size_query_param = 'page_size'
+    page_size_query_param = "page_size"
     max_page_size = 100
 
 
@@ -74,7 +91,8 @@ class StandardResultsSetPagination(PageNumberPagination):
 # PERFIL DEL USUARIO
 # ============================================
 
-@api_view(['GET'])
+
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def obtener_perfil(request):
     """
@@ -85,27 +103,23 @@ def obtener_perfil(request):
         user = request.user
 
         # Optimización: select_related para evitar query adicional
-        perfil = get_object_or_404(
-            Perfil.objects.select_related('user'),
-            user=user
-        )
+        perfil = get_object_or_404(Perfil.objects.select_related("user"), user=user)
 
         serializer = PerfilSerializer(perfil)
 
         logger.info(f"Perfil obtenido: {user.email}")
 
-        return Response({
-            'perfil': serializer.data
-        }, status=status.HTTP_200_OK)
+        return Response({"perfil": serializer.data}, status=status.HTTP_200_OK)
 
     except Exception as e:
         logger.error(f"Error obteniendo perfil: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al obtener perfil'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al obtener perfil"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def obtener_perfil_publico(request, user_id):
     """
@@ -114,30 +128,30 @@ def obtener_perfil_publico(request, user_id):
     """
     try:
         perfil = get_object_or_404(
-            Perfil.objects.select_related('user'),
-            user_id=user_id
+            Perfil.objects.select_related("user"), user_id=user_id
         )
 
         serializer = PerfilPublicoSerializer(perfil)
 
-        logger.info(f"Perfil público consultado: user_id={user_id} por {request.user.email}")
+        logger.info(
+            f"Perfil público consultado: user_id={user_id} por {request.user.email}"
+        )
 
-        return Response({
-            'perfil': serializer.data
-        }, status=status.HTTP_200_OK)
+        return Response({"perfil": serializer.data}, status=status.HTTP_200_OK)
 
     except Exception as e:
         logger.error(f"Error obteniendo perfil público: {e}", exc_info=True)
-        return Response({
-            'error': 'Perfil no encontrado'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": "Perfil no encontrado"}, status=status.HTTP_404_NOT_FOUND
+        )
 
 
 # usuarios/views.py (línea ~160, en actualizar_perfil)
 
-@api_view(['PUT', 'PATCH'])
+
+@api_view(["PUT", "PATCH"])
 @permission_classes([IsAuthenticated])
-#@throttle_classes([PerfilThrottle])
+# @throttle_classes([PerfilThrottle])
 def actualizar_perfil(request):
     """
     Actualiza la información del perfil
@@ -145,36 +159,42 @@ def actualizar_perfil(request):
     """
     try:
         user = request.user
-        perfil = get_object_or_404(Perfil.objects.select_related('user'), user=user)
+        perfil = get_object_or_404(Perfil.objects.select_related("user"), user=user)
 
-        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        data = (
+            request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        )
 
         # ✅ NUEVO: Si viene 'telefono', actualizar user.celular
-        if 'telefono' in data:
-            nuevo_celular = data.pop('telefono')  # Remover de data del perfil
+        if "telefono" in data:
+            nuevo_celular = data.pop("telefono")  # Remover de data del perfil
 
             # Validar formato (09 + 8 dígitos)
             import re
-            if not re.match(r'^09\d{8}$', nuevo_celular):
-                return Response({
-                    'error': 'El celular debe comenzar con 09 y tener 10 dígitos'
-                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if not re.match(r"^09\d{8}$", nuevo_celular):
+                return Response(
+                    {"error": "El celular debe comenzar con 09 y tener 10 dígitos"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Verificar que no esté en uso por otro usuario
             from authentication.models import User
+
             if User.objects.filter(celular=nuevo_celular).exclude(id=user.id).exists():
-                return Response({
-                    'error': 'Este celular ya está registrado'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": "Este celular ya está registrado"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Actualizar celular del User
             user.celular = nuevo_celular
-            user.save(update_fields=['celular'])
+            user.save(update_fields=["celular"])
             logger.info(f"📱 Celular actualizado: {user.email} -> {nuevo_celular}")
 
         # Manejar caso especial: borrar foto
-        if 'foto_perfil' in data and data['foto_perfil'] in [None, '', 'null']:
-            data['foto_perfil'] = None
+        if "foto_perfil" in data and data["foto_perfil"] in [None, "", "null"]:
+            data["foto_perfil"] = None
 
         # Actualizar perfil
         serializer = ActualizarPerfilSerializer(perfil, data=data, partial=True)
@@ -185,26 +205,31 @@ def actualizar_perfil(request):
 
             # Devolver perfil completo actualizado
             perfil.refresh_from_db()
-            return Response({
-                'mensaje': 'Perfil actualizado exitosamente',
-                'perfil': PerfilSerializer(perfil, context={'request': request}).data
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "mensaje": "Perfil actualizado exitosamente",
+                    "perfil": PerfilSerializer(
+                        perfil, context={"request": request}
+                    ).data,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         logger.warning(f"⚠️ Validación fallida: {serializer.errors}")
-        return Response({
-            'error': 'Error de validación',
-            'detalles': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Error de validación", "detalles": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     except Exception as e:
         logger.error(f"❌ Error actualizando perfil: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al actualizar perfil',
-            'detalle': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al actualizar perfil", "detalle": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def estadisticas_usuario(request):
     """
@@ -235,37 +260,46 @@ def estadisticas_usuario(request):
 
         # ✅ Construir estadísticas con valores seguros
         estadisticas = {
-            'total_pedidos': perfil.total_pedidos if perfil.total_pedidos is not None else 0,
-            'pedidos_mes_actual': perfil.pedidos_mes_actual if perfil.pedidos_mes_actual is not None else 0,
-            'calificacion': float(perfil.calificacion) if perfil.calificacion is not None else 5.0,
-            'total_resenas': perfil.total_resenas if perfil.total_resenas is not None else 0,
-            'es_cliente_frecuente': perfil.es_cliente_frecuente,
-            'puede_participar_rifa': perfil.puede_participar_rifa,
-            'total_direcciones': total_direcciones,
-            'total_metodos_pago': total_metodos_pago
+            "total_pedidos": (
+                perfil.total_pedidos if perfil.total_pedidos is not None else 0
+            ),
+            "pedidos_mes_actual": (
+                perfil.pedidos_mes_actual
+                if perfil.pedidos_mes_actual is not None
+                else 0
+            ),
+            "calificacion": (
+                float(perfil.calificacion) if perfil.calificacion is not None else 5.0
+            ),
+            "total_resenas": (
+                perfil.total_resenas if perfil.total_resenas is not None else 0
+            ),
+            "es_cliente_frecuente": perfil.es_cliente_frecuente,
+            "puede_participar_rifa": perfil.puede_participar_rifa,
+            "total_direcciones": total_direcciones,
+            "total_metodos_pago": total_metodos_pago,
         }
 
         serializer = EstadisticasUsuarioSerializer(estadisticas)
 
         logger.info(f"✅ Estadísticas consultadas: {user.email}")
 
-        return Response({
-            'estadisticas': serializer.data
-        }, status=status.HTTP_200_OK)
+        return Response({"estadisticas": serializer.data}, status=status.HTTP_200_OK)
 
     except Exception as e:
         logger.error(f"❌ Error obteniendo estadísticas: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al obtener estadísticas',
-            'detalle': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al obtener estadísticas", "detalle": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 # ============================================
 # ✅ FOTO DE PERFIL CON VALIDACIÓN, THROTTLING Y DEBUG
 # ============================================
 
-@api_view(['POST', 'DELETE'])
+
+@api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 # @throttle_classes([UploadThrottle])  # ✅ COMENTADO en desarrollo
 def subir_foto_perfil(request):
@@ -276,196 +310,210 @@ def subir_foto_perfil(request):
     """
     try:
         user = request.user
-        perfil = get_object_or_404(
-            Perfil.objects.select_related('user'),
-            user=user
-        )
+        perfil = get_object_or_404(Perfil.objects.select_related("user"), user=user)
 
-        if request.method == 'POST':
+        if request.method == "POST":
             # ✅ LOG 1: Inicio del proceso
-            logger.info(f'🚀 Iniciando subida de foto: {user.email}')
+            logger.info(f"🚀 Iniciando subida de foto: {user.email}")
 
             # Validar que venga la foto
-            if 'foto_perfil' not in request.FILES:
-                logger.warning(f'❌ No se envió archivo: {user.email}')
-                return Response({
-                    'error': 'Debes enviar el archivo con el nombre "foto_perfil"'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            if "foto_perfil" not in request.FILES:
+                logger.warning(f"❌ No se envió archivo: {user.email}")
+                return Response(
+                    {"error": 'Debes enviar el archivo con el nombre "foto_perfil"'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-            foto = request.FILES['foto_perfil']
+            foto = request.FILES["foto_perfil"]
 
             # ✅ LOG 2: Información del archivo recibido
-            logger.info(f'📥 Archivo recibido:')
-            logger.info(f'   - Nombre: {foto.name}')
-            logger.info(f'   - Tamaño: {foto.size} bytes ({foto.size / 1024:.2f} KB)')
-            logger.info(f'   - Content-Type: {foto.content_type}')
+            logger.info(f"📥 Archivo recibido:")
+            logger.info(f"   - Nombre: {foto.name}")
+            logger.info(f"   - Tamaño: {foto.size} bytes ({foto.size / 1024:.2f} KB)")
+            logger.info(f"   - Content-Type: {foto.content_type}")
 
             # Validar tamaño (5MB máximo)
             max_size = 5 * 1024 * 1024
             if foto.size > max_size:
                 tamano_mb = foto.size / (1024 * 1024)
-                logger.warning(f'❌ Archivo muy grande: {tamano_mb:.1f}MB')
-                return Response({
-                    'error': f'La imagen no puede superar 5MB (tamaño actual: {tamano_mb:.1f}MB)'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                logger.warning(f"❌ Archivo muy grande: {tamano_mb:.1f}MB")
+                return Response(
+                    {
+                        "error": f"La imagen no puede superar 5MB (tamaño actual: {tamano_mb:.1f}MB)"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Validar extensión
-            valid_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+            valid_extensions = [".jpg", ".jpeg", ".png", ".webp"]
             ext = os.path.splitext(foto.name)[1].lower()
             if ext not in valid_extensions:
-                logger.warning(f'❌ Extensión no válida: {ext}')
-                return Response({
-                    'error': f'Formato no válido. Use: {", ".join(valid_extensions)}'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                logger.warning(f"❌ Extensión no válida: {ext}")
+                return Response(
+                    {"error": f'Formato no válido. Use: {", ".join(valid_extensions)}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # ✅ LOG 3: Configuración de Django
-            logger.info(f'📂 Configuración Django:')
-            logger.info(f'   - MEDIA_ROOT: {settings.MEDIA_ROOT}')
-            logger.info(f'   - MEDIA_URL: {settings.MEDIA_URL}')
-            logger.info(f'   - BASE_DIR: {settings.BASE_DIR}')
+            logger.info(f"📂 Configuración Django:")
+            logger.info(f"   - MEDIA_ROOT: {settings.MEDIA_ROOT}")
+            logger.info(f"   - MEDIA_URL: {settings.MEDIA_URL}")
+            logger.info(f"   - BASE_DIR: {settings.BASE_DIR}")
 
             # ✅ LOG 4: Verificar que MEDIA_ROOT existe
             if not os.path.exists(settings.MEDIA_ROOT):
-                logger.error(f'❌ MEDIA_ROOT NO EXISTE: {settings.MEDIA_ROOT}')
-                logger.info(f'📁 Intentando crear MEDIA_ROOT...')
+                logger.error(f"❌ MEDIA_ROOT NO EXISTE: {settings.MEDIA_ROOT}")
+                logger.info(f"📁 Intentando crear MEDIA_ROOT...")
                 try:
                     os.makedirs(settings.MEDIA_ROOT, mode=0o755, exist_ok=True)
-                    logger.info(f'✅ MEDIA_ROOT creado: {settings.MEDIA_ROOT}')
+                    logger.info(f"✅ MEDIA_ROOT creado: {settings.MEDIA_ROOT}")
                 except Exception as e:
-                    logger.error(f'❌ Error creando MEDIA_ROOT: {e}')
+                    logger.error(f"❌ Error creando MEDIA_ROOT: {e}")
             else:
-                logger.info(f'✅ MEDIA_ROOT existe')
+                logger.info(f"✅ MEDIA_ROOT existe")
                 # Verificar permisos
                 import stat
+
                 permisos = oct(os.stat(settings.MEDIA_ROOT).st_mode)[-3:]
-                logger.info(f'🔐 Permisos MEDIA_ROOT: {permisos}')
+                logger.info(f"🔐 Permisos MEDIA_ROOT: {permisos}")
 
             # ✅ LOG 5: Procesar imagen con PIL (redimensionar)
             try:
-                logger.info(f'🖼️  Procesando imagen con PIL...')
+                logger.info(f"🖼️  Procesando imagen con PIL...")
                 img = Image.open(foto)
-                logger.info(f'   - Formato original: {img.format}')
-                logger.info(f'   - Modo: {img.mode}')
-                logger.info(f'   - Tamaño: {img.size}')
+                logger.info(f"   - Formato original: {img.format}")
+                logger.info(f"   - Modo: {img.mode}")
+                logger.info(f"   - Tamaño: {img.size}")
 
                 # Redimensionar
                 img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-                logger.info(f'   - Nuevo tamaño: {img.size}')
+                logger.info(f"   - Nuevo tamaño: {img.size}")
 
                 # Convertir a RGB si es necesario
-                if img.mode in ('RGBA', 'P', 'LA'):
-                    logger.info(f'   - Convirtiendo {img.mode} → RGB')
-                    img = img.convert('RGB')
+                if img.mode in ("RGBA", "P", "LA"):
+                    logger.info(f"   - Convirtiendo {img.mode} → RGB")
+                    img = img.convert("RGB")
 
                 # Guardar en memoria
                 output = BytesIO()
-                img.save(output, format='JPEG', quality=85, optimize=True)
+                img.save(output, format="JPEG", quality=85, optimize=True)
                 output.seek(0)
 
                 # Crear nuevo archivo
                 foto = InMemoryUploadedFile(
                     output,
-                    'ImageField',
-                    f'scaled_{os.path.basename(foto.name)}',
-                    'image/jpeg',
+                    "ImageField",
+                    f"scaled_{os.path.basename(foto.name)}",
+                    "image/jpeg",
                     output.getbuffer().nbytes,
-                    None
+                    None,
                 )
 
-                logger.info(f'✅ Imagen procesada: {foto.size} bytes ({foto.size / 1024:.2f} KB)')
+                logger.info(
+                    f"✅ Imagen procesada: {foto.size} bytes ({foto.size / 1024:.2f} KB)"
+                )
 
             except Exception as e:
-                logger.error(f'❌ Error procesando imagen: {str(e)}')
-                logger.exception('Traceback completo:')
-                return Response({
-                    'error': f'Error al procesar imagen: {str(e)}'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                logger.error(f"❌ Error procesando imagen: {str(e)}")
+                logger.exception("Traceback completo:")
+                return Response(
+                    {"error": f"Error al procesar imagen: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # ✅ LOG 6: Antes de guardar en el modelo
-            logger.info(f'💾 Guardando en modelo Django...')
-            logger.info(f'   - Perfil ID: {perfil.id}')
-            logger.info(f'   - Usuario: {perfil.user.email}')
+            logger.info(f"💾 Guardando en modelo Django...")
+            logger.info(f"   - Perfil ID: {perfil.id}")
+            logger.info(f"   - Usuario: {perfil.user.email}")
 
             # Guardar foto anterior para eliminarla después
             foto_anterior = perfil.foto_perfil.name if perfil.foto_perfil else None
             if foto_anterior:
-                logger.info(f'   - Foto anterior: {foto_anterior}')
+                logger.info(f"   - Foto anterior: {foto_anterior}")
 
             # Actualizar foto
             perfil.foto_perfil = foto
-            perfil.save(update_fields=['foto_perfil', 'actualizado_en'])
+            perfil.save(update_fields=["foto_perfil", "actualizado_en"])
 
             # ✅ LOG 7: Después de guardar
-            logger.info(f'📸 Foto de perfil actualizada: {user.email}')
-            logger.info(f'📁 Información del archivo guardado:')
-            logger.info(f'   - Ruta completa: {perfil.foto_perfil.path}')
-            logger.info(f'   - Ruta relativa: {perfil.foto_perfil.name}')
-            logger.info(f'   - URL pública: {perfil.foto_perfil.url}')
+            logger.info(f"📸 Foto de perfil actualizada: {user.email}")
+            logger.info(f"📁 Información del archivo guardado:")
+            logger.info(f"   - Ruta completa: {perfil.foto_perfil.path}")
+            logger.info(f"   - Ruta relativa: {perfil.foto_perfil.name}")
+            logger.info(f"   - URL pública: {perfil.foto_perfil.url}")
 
             # ✅ LOG 8: Verificar que existe físicamente
             if os.path.exists(perfil.foto_perfil.path):
                 tamaño = os.path.getsize(perfil.foto_perfil.path)
-                logger.info(f'✅ ¡ARCHIVO EXISTE FÍSICAMENTE!')
-                logger.info(f'   - Tamaño en disco: {tamaño} bytes ({tamaño / 1024:.2f} KB)')
+                logger.info(f"✅ ¡ARCHIVO EXISTE FÍSICAMENTE!")
+                logger.info(
+                    f"   - Tamaño en disco: {tamaño} bytes ({tamaño / 1024:.2f} KB)"
+                )
 
                 # Permisos del archivo
                 import stat
+
                 permisos = oct(os.stat(perfil.foto_perfil.path).st_mode)[-3:]
-                logger.info(f'   - Permisos: {permisos}')
+                logger.info(f"   - Permisos: {permisos}")
 
             else:
-                logger.error(f'❌ ¡ARCHIVO NO EXISTE FÍSICAMENTE!')
-                logger.error(f'❌ Ruta esperada: {perfil.foto_perfil.path}')
-                logger.error(f'❌ Esto es un ERROR CRÍTICO')
+                logger.error(f"❌ ¡ARCHIVO NO EXISTE FÍSICAMENTE!")
+                logger.error(f"❌ Ruta esperada: {perfil.foto_perfil.path}")
+                logger.error(f"❌ Esto es un ERROR CRÍTICO")
 
             # ✅ LOG 9: Verificar directorio
             directorio = os.path.dirname(perfil.foto_perfil.path)
-            logger.info(f'📂 Verificando directorio:')
-            logger.info(f'   - Ruta: {directorio}')
+            logger.info(f"📂 Verificando directorio:")
+            logger.info(f"   - Ruta: {directorio}")
 
             if os.path.exists(directorio):
-                logger.info(f'   - ✅ Directorio existe')
+                logger.info(f"   - ✅ Directorio existe")
 
                 # Listar archivos
                 try:
                     archivos = os.listdir(directorio)
-                    logger.info(f'   - Archivos en directorio: {archivos}')
-                    logger.info(f'   - Total de archivos: {len(archivos)}')
+                    logger.info(f"   - Archivos en directorio: {archivos}")
+                    logger.info(f"   - Total de archivos: {len(archivos)}")
 
                     # Permisos del directorio
                     import stat
+
                     permisos_dir = oct(os.stat(directorio).st_mode)[-3:]
-                    logger.info(f'   - Permisos del directorio: {permisos_dir}')
+                    logger.info(f"   - Permisos del directorio: {permisos_dir}")
 
                 except Exception as e:
-                    logger.error(f'   - ❌ Error listando directorio: {e}')
+                    logger.error(f"   - ❌ Error listando directorio: {e}")
 
             else:
-                logger.error(f'   - ❌ Directorio NO existe')
-                logger.info(f'   - 📁 Intentando crear directorio...')
+                logger.error(f"   - ❌ Directorio NO existe")
+                logger.info(f"   - 📁 Intentando crear directorio...")
                 try:
                     os.makedirs(directorio, mode=0o755, exist_ok=True)
-                    logger.info(f'   - ✅ Directorio creado')
+                    logger.info(f"   - ✅ Directorio creado")
                 except Exception as e:
-                    logger.error(f'   - ❌ Error creando directorio: {e}')
+                    logger.error(f"   - ❌ Error creando directorio: {e}")
 
             # ✅ Refrescar perfil y devolver serializado completo
             perfil.refresh_from_db()
 
-            logger.info(f'✅ Respuesta enviada con perfil completo')
+            logger.info(f"✅ Respuesta enviada con perfil completo")
 
-            return Response({
-                'mensaje': 'Foto de perfil actualizada exitosamente',
-                'perfil': PerfilSerializer(perfil).data
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "mensaje": "Foto de perfil actualizada exitosamente",
+                    "perfil": PerfilSerializer(perfil).data,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         # DELETE - Eliminar foto
         else:
             if not perfil.foto_perfil:
-                logger.warning(f'⚠️ No hay foto para eliminar: {user.email}')
-                return Response({
-                    'mensaje': 'No tienes foto de perfil para eliminar'
-                }, status=status.HTTP_404_NOT_FOUND)
+                logger.warning(f"⚠️ No hay foto para eliminar: {user.email}")
+                return Response(
+                    {"mensaje": "No tienes foto de perfil para eliminar"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
             # Obtener ruta antes de eliminar
             ruta_foto = perfil.foto_perfil.path if perfil.foto_perfil else None
@@ -473,35 +521,40 @@ def subir_foto_perfil(request):
             # Eliminar foto
             perfil.foto_perfil.delete(save=False)
             perfil.foto_perfil = None
-            perfil.save(update_fields=['foto_perfil', 'actualizado_en'])
+            perfil.save(update_fields=["foto_perfil", "actualizado_en"])
 
-            logger.info(f'🗑️ Foto de perfil eliminada: {user.email}')
+            logger.info(f"🗑️ Foto de perfil eliminada: {user.email}")
             if ruta_foto:
-                logger.info(f'   - Archivo eliminado: {ruta_foto}')
+                logger.info(f"   - Archivo eliminado: {ruta_foto}")
 
             # ✅ Refrescar y devolver perfil completo
             perfil.refresh_from_db()
 
-            return Response({
-                'mensaje': 'Foto de perfil eliminada exitosamente',
-                'perfil': PerfilSerializer(perfil).data
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "mensaje": "Foto de perfil eliminada exitosamente",
+                    "perfil": PerfilSerializer(perfil).data,
+                },
+                status=status.HTTP_200_OK,
+            )
 
     except Exception as e:
-        logger.error(f'❌ ERROR CRÍTICO en subir_foto_perfil: {str(e)}')
-        logger.exception('Traceback completo:')
-        return Response({
-            'error': f'Error al gestionar foto de perfil: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"❌ ERROR CRÍTICO en subir_foto_perfil: {str(e)}")
+        logger.exception("Traceback completo:")
+        return Response(
+            {"error": f"Error al gestionar foto de perfil: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 # ============================================
 # ✅ NOTIFICACIONES PUSH (FCM)
 # ============================================
 
-@api_view(['POST'])
+
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
-#@throttle_classes([FCMThrottle])
+# @throttle_classes([FCMThrottle])
 def registrar_fcm_token(request):
     """
     Registra o actualiza el token FCM del dispositivo para notificaciones push
@@ -520,7 +573,7 @@ def registrar_fcm_token(request):
             logger.warning(f"⚠️ Token FCM inválido: {user.email} - {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        token = serializer.validated_data['fcm_token']
+        token = serializer.validated_data["fcm_token"]
 
         # Obtener perfil y actualizar token
         perfil = get_object_or_404(Perfil, user=user)
@@ -528,25 +581,30 @@ def registrar_fcm_token(request):
         if perfil.actualizar_fcm_token(token):
             logger.info(f"✅ Token FCM registrado: {user.email}")
 
-            return Response({
-                'mensaje': 'Token FCM registrado exitosamente',
-                'puede_recibir_notificaciones': perfil.puede_recibir_notificaciones,
-                'notificaciones_pedido': perfil.notificaciones_pedido,
-                'notificaciones_promociones': perfil.notificaciones_promociones
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "mensaje": "Token FCM registrado exitosamente",
+                    "puede_recibir_notificaciones": perfil.puede_recibir_notificaciones,
+                    "notificaciones_pedido": perfil.notificaciones_pedido,
+                    "notificaciones_promociones": perfil.notificaciones_promociones,
+                },
+                status=status.HTTP_200_OK,
+            )
         else:
-            return Response({
-                'error': 'No se pudo registrar el token'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "No se pudo registrar el token"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     except Exception as e:
         logger.error(f"❌ Error registrando token FCM: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al registrar token FCM'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al registrar token FCM"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['DELETE'])
+@api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def eliminar_fcm_token(request):
     """
@@ -560,18 +618,19 @@ def eliminar_fcm_token(request):
 
         logger.info(f"🔒 Token FCM eliminado: {user.email}")
 
-        return Response({
-            'mensaje': 'Token FCM eliminado exitosamente'
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {"mensaje": "Token FCM eliminado exitosamente"}, status=status.HTTP_200_OK
+        )
 
     except Exception as e:
         logger.error(f"❌ Error eliminando token FCM: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al eliminar token FCM'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al eliminar token FCM"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def estado_notificaciones(request):
     """
@@ -579,16 +638,13 @@ def estado_notificaciones(request):
     """
     try:
         user = request.user
-        perfil = get_object_or_404(
-            Perfil.objects.select_related('user'),
-            user=user
-        )
+        perfil = get_object_or_404(Perfil.objects.select_related("user"), user=user)
 
         estado = {
-            'puede_recibir_notificaciones': perfil.puede_recibir_notificaciones,
-            'notificaciones_pedido': perfil.notificaciones_pedido,
-            'notificaciones_promociones': perfil.notificaciones_promociones,
-            'token_actualizado': perfil.fcm_token_actualizado
+            "puede_recibir_notificaciones": perfil.puede_recibir_notificaciones,
+            "notificaciones_pedido": perfil.notificaciones_pedido,
+            "notificaciones_promociones": perfil.notificaciones_promociones,
+            "token_actualizado": perfil.fcm_token_actualizado,
         }
 
         serializer = EstadoNotificacionesSerializer(estado)
@@ -596,16 +652,19 @@ def estado_notificaciones(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     except Exception as e:
-        logger.error(f"❌ Error obteniendo estado de notificaciones: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al obtener estado de notificaciones'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(
+            f"❌ Error obteniendo estado de notificaciones: {e}", exc_info=True
+        )
+        return Response(
+            {"error": "Error al obtener estado de notificaciones"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 # ============================================
 # DIRECCIONES FAVORITAS
 # ============================================
-@api_view(['GET', 'POST'])
+@api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def direcciones_favoritas(request):
     """
@@ -619,11 +678,9 @@ def direcciones_favoritas(request):
         # ===========================================================
         # 🟢 GET - Listar direcciones favoritas activas del usuario
         # ===========================================================
-        if request.method == 'GET':
+        if request.method == "GET":
             direcciones = user.direcciones_favoritas.filter(activa=True).order_by(
-                '-es_predeterminada',
-                '-ultimo_uso',
-                '-created_at'
+                "-es_predeterminada", "-ultimo_uso", "-created_at"
             )
 
             # Aplicar paginación estándar
@@ -637,77 +694,104 @@ def direcciones_favoritas(request):
 
             # Sin paginación (fallback)
             serializer = DireccionFavoritaSerializer(direcciones, many=True)
-            logger.info(f"Direcciones consultadas: {user.email} ({direcciones.count()} direcciones)")
+            logger.info(
+                f"Direcciones consultadas: {user.email} ({direcciones.count()} direcciones)"
+            )
 
-            return Response({
-                'direcciones': serializer.data,
-                'total': direcciones.count()
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {"direcciones": serializer.data, "total": direcciones.count()},
+                status=status.HTTP_200_OK,
+            )
 
         # ===========================================================
         # 🔵 POST - Crear nueva dirección favorita
         # ===========================================================
-        elif request.method == 'POST':
+        elif request.method == "POST":
             logger.info(f"📩 Creando dirección para {user.email}")
 
             serializer = CrearDireccionSerializer(
-                data=request.data,
-                context={'request': request}
+                data=request.data, context={"request": request}
             )
 
             # 🔍 Validación previa
             if not serializer.is_valid():
-                logger.warning(f"⚠️ Validación fallida al crear dirección: {serializer.errors}")
-                return Response({
-                    'error': 'Error de validación',
-                    'detalles': serializer.errors
-                }, status=status.HTTP_400_BAD_REQUEST)
+                logger.warning(
+                    f"⚠️ Validación fallida al crear dirección: {serializer.errors}"
+                )
+                return Response(
+                    {"error": "Error de validación", "detalles": serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             try:
                 # ✅ Intentar guardar la dirección
                 direccion = serializer.save()
-                logger.info(f"✅ Dirección creada exitosamente: {user.email} - {direccion.etiqueta}")
+                logger.info(
+                    f"✅ Dirección creada exitosamente: {user.email} - {direccion.etiqueta}"
+                )
 
-                return Response({
-                    'mensaje': 'Dirección guardada exitosamente',
-                    'direccion': DireccionFavoritaSerializer(direccion).data
-                }, status=status.HTTP_201_CREATED)
+                return Response(
+                    {
+                        "mensaje": "Dirección guardada exitosamente",
+                        "direccion": DireccionFavoritaSerializer(direccion).data,
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
 
             except Exception as e:
-                from rest_framework.exceptions import ValidationError as DRFValidationError
+                from rest_framework.exceptions import (
+                    ValidationError as DRFValidationError,
+                )
                 from django.db import IntegrityError
-                from django.core.exceptions import ValidationError as DjangoValidationError
+                from django.core.exceptions import (
+                    ValidationError as DjangoValidationError,
+                )
 
                 # ✅ CASO 1: ValidationError de Django (full_clean → unique_together)
                 if isinstance(e, DjangoValidationError):
-                    logger.warning(f"⚠️ Django ValidationError: {e.message_dict if hasattr(e, 'message_dict') else str(e)}")
+                    logger.warning(
+                        f"⚠️ Django ValidationError: {e.message_dict if hasattr(e, 'message_dict') else str(e)}"
+                    )
 
                     # Extraer mensaje del error
-                    if hasattr(e, 'message_dict') and '__all__' in e.message_dict:
-                        mensaje_original = e.message_dict['__all__'][0]
+                    if hasattr(e, "message_dict") and "__all__" in e.message_dict:
+                        mensaje_original = e.message_dict["__all__"][0]
 
                         # Detectar si es problema de etiqueta duplicada
-                        if 'etiqueta' in mensaje_original.lower() or 'ya existe' in mensaje_original.lower():
-                            return Response({
-                                'error': 'Ya tienes una dirección con esta etiqueta',
-                                'detalles': {
-                                    'etiqueta': ['Usa otra etiqueta o actualiza la dirección existente.']
-                                }
-                            }, status=status.HTTP_400_BAD_REQUEST)
+                        if (
+                            "etiqueta" in mensaje_original.lower()
+                            or "ya existe" in mensaje_original.lower()
+                        ):
+                            return Response(
+                                {
+                                    "error": "Ya tienes una dirección con esta etiqueta",
+                                    "detalles": {
+                                        "etiqueta": [
+                                            "Usa otra etiqueta o actualiza la dirección existente."
+                                        ]
+                                    },
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
 
                     # Mensaje genérico
-                    return Response({
-                        'error': 'Error de validación en la dirección',
-                        'detalles': e.message_dict if hasattr(e, 'message_dict') else str(e)
-                    }, status=status.HTTP_400_BAD_REQUEST)
+                    return Response(
+                        {
+                            "error": "Error de validación en la dirección",
+                            "detalles": (
+                                e.message_dict if hasattr(e, "message_dict") else str(e)
+                            ),
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
                 # ✅ CASO 2: ValidationError de DRF
                 if isinstance(e, DRFValidationError):
                     logger.warning(f"⚠️ DRF ValidationError: {e.detail}")
-                    return Response({
-                        'error': 'Error de validación',
-                        'detalles': e.detail
-                    }, status=status.HTTP_400_BAD_REQUEST)
+                    return Response(
+                        {"error": "Error de validación", "detalles": e.detail},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
                 # ✅ CASO 3: IntegrityError (constraint de BD)
                 if isinstance(e, IntegrityError):
@@ -715,45 +799,60 @@ def direcciones_favoritas(request):
                     logger.warning(f"⚠️ IntegrityError: {error_msg}")
 
                     # Detectar tipo de constraint violada
-                    if 'unique' in error_msg or 'duplicate' in error_msg:
-                        if 'etiqueta' in error_msg or 'user' in error_msg:
-                            return Response({
-                                'error': 'Ya tienes una dirección con esta etiqueta',
-                                'detalles': {
-                                    'etiqueta': ['Usa otra etiqueta o actualiza la dirección existente.']
-                                }
-                            }, status=status.HTTP_400_BAD_REQUEST)
+                    if "unique" in error_msg or "duplicate" in error_msg:
+                        if "etiqueta" in error_msg or "user" in error_msg:
+                            return Response(
+                                {
+                                    "error": "Ya tienes una dirección con esta etiqueta",
+                                    "detalles": {
+                                        "etiqueta": [
+                                            "Usa otra etiqueta o actualiza la dirección existente."
+                                        ]
+                                    },
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
 
                         # Constraint genérico
-                        return Response({
-                            'error': 'Esta dirección ya existe',
-                            'detalle': 'Verifica que no tengas una dirección similar.'
-                        }, status=status.HTTP_400_BAD_REQUEST)
+                        return Response(
+                            {
+                                "error": "Esta dirección ya existe",
+                                "detalle": "Verifica que no tengas una dirección similar.",
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
                     # Otro tipo de IntegrityError
-                    return Response({
-                        'error': 'Error de integridad en la base de datos'
-                    }, status=status.HTTP_400_BAD_REQUEST)
+                    return Response(
+                        {"error": "Error de integridad en la base de datos"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
                 # ✅ CASO 4: Error inesperado
-                logger.error(f"💥 Error inesperado al crear dirección: {type(e).__name__}: {str(e)}", exc_info=True)
-                return Response({
-                    'error': 'Error interno al crear dirección',
-                    'detalle': 'Ocurrió un error inesperado. Intenta nuevamente.'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                logger.error(
+                    f"💥 Error inesperado al crear dirección: {type(e).__name__}: {str(e)}",
+                    exc_info=True,
+                )
+                return Response(
+                    {
+                        "error": "Error interno al crear dirección",
+                        "detalle": "Ocurrió un error inesperado. Intenta nuevamente.",
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
     # ===============================================================
     # 🚨 Captura de cualquier error general fuera del flujo principal
     # ===============================================================
     except Exception as e:
         logger.error(f"❌ Error general en direcciones_favoritas: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al gestionar direcciones',
-            'detalle': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al gestionar direcciones", "detalle": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def detalle_direccion(request, direccion_id):
     """
@@ -765,27 +864,24 @@ def detalle_direccion(request, direccion_id):
     try:
         user = request.user
         direccion = get_object_or_404(
-            DireccionFavorita,
-            id=direccion_id,
-            user=user,
-            activa=True
+            DireccionFavorita, id=direccion_id, user=user, activa=True
         )
 
-        if request.method == 'GET':
+        if request.method == "GET":
             serializer = DireccionFavoritaSerializer(direccion)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
-        elif request.method in ['PUT', 'PATCH']:
+        elif request.method in ["PUT", "PATCH"]:
             serializer = ActualizarDireccionSerializer(
-                direccion,
-                data=request.data,
-                partial=True,
-                context={'request': request}
+                direccion, data=request.data, partial=True, context={"request": request}
             )
 
             if serializer.is_valid():
                 # ✅ CORREGIDO: Si se marca como predeterminada, usar select_for_update
-                if 'es_predeterminada' in request.data and request.data['es_predeterminada'] is True:
+                if (
+                    "es_predeterminada" in request.data
+                    and request.data["es_predeterminada"] is True
+                ):
                     with transaction.atomic():
                         user.direcciones_favoritas.select_for_update().filter(
                             activa=True
@@ -794,14 +890,21 @@ def detalle_direccion(request, direccion_id):
                 else:
                     serializer.save()
 
-                logger.info(f"✅ Dirección actualizada: {user.email} - {direccion.etiqueta}")
+                logger.info(
+                    f"✅ Dirección actualizada: {user.email} - {direccion.etiqueta}"
+                )
 
-                return Response({
-                    'mensaje': 'Dirección actualizada exitosamente',
-                    'direccion': DireccionFavoritaSerializer(direccion).data
-                }, status=status.HTTP_200_OK)
+                return Response(
+                    {
+                        "mensaje": "Dirección actualizada exitosamente",
+                        "direccion": DireccionFavoritaSerializer(direccion).data,
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
-            logger.warning(f"⚠️ Validación fallida al actualizar dirección: {user.email} - {serializer.errors}")
+            logger.warning(
+                f"⚠️ Validación fallida al actualizar dirección: {user.email} - {serializer.errors}"
+            )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         # DELETE - Desactivar en lugar de eliminar
@@ -810,23 +913,27 @@ def detalle_direccion(request, direccion_id):
 
             logger.info(f"🗑️ Dirección desactivada: {user.email} - {direccion.etiqueta}")
 
-            return Response({
-                'mensaje': 'Dirección eliminada exitosamente'
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {"mensaje": "Dirección eliminada exitosamente"},
+                status=status.HTTP_200_OK,
+            )
 
     except DireccionFavorita.DoesNotExist:
-        logger.warning(f"⚠️ Dirección no encontrada: {direccion_id} - Usuario: {request.user.email}")
-        return Response({
-            'error': 'Dirección no encontrada'
-        }, status=status.HTTP_404_NOT_FOUND)
+        logger.warning(
+            f"⚠️ Dirección no encontrada: {direccion_id} - Usuario: {request.user.email}"
+        )
+        return Response(
+            {"error": "Dirección no encontrada"}, status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as e:
         logger.error(f"❌ Error con dirección: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al gestionar dirección'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al gestionar dirección"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def direccion_predeterminada(request):
     """
@@ -835,34 +942,36 @@ def direccion_predeterminada(request):
     try:
         user = request.user
         direccion = user.direcciones_favoritas.filter(
-            es_predeterminada=True,
-            activa=True
+            es_predeterminada=True, activa=True
         ).first()
 
         if not direccion:
-            return Response({
-                'mensaje': 'No tienes una dirección predeterminada'
-            }, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"mensaje": "No tienes una dirección predeterminada"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         serializer = DireccionFavoritaSerializer(direccion)
-        return Response({
-            'direccion': serializer.data
-        }, status=status.HTTP_200_OK)
+        return Response({"direccion": serializer.data}, status=status.HTTP_200_OK)
 
     except Exception as e:
-        logger.error(f"❌ Error obteniendo dirección predeterminada: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al obtener dirección'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(
+            f"❌ Error obteniendo dirección predeterminada: {e}", exc_info=True
+        )
+        return Response(
+            {"error": "Error al obtener dirección"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 # ============================================
 # ✅ MÉTODOS DE PAGO CON COMPROBANTES
 # ============================================
 
-@api_view(['GET', 'POST'])
+
+@api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
-#@throttle_classes([UploadThrottle])
+# @throttle_classes([UploadThrottle])
 def metodos_pago(request):
     """
     GET: Obtiene todos los métodos de pago guardados (con paginación)
@@ -872,11 +981,10 @@ def metodos_pago(request):
     try:
         user = request.user
 
-        if request.method == 'GET':
+        if request.method == "GET":
             # Solo métodos activos, ordenados
             metodos = user.metodos_pago.filter(activo=True).order_by(
-                '-es_predeterminado',
-                '-created_at'
+                "-es_predeterminado", "-created_at"
             )
 
             # Aplicar paginación
@@ -890,17 +998,18 @@ def metodos_pago(request):
 
             # Sin paginación (fallback)
             serializer = MetodoPagoSerializer(metodos, many=True)
-            logger.info(f"💳 Métodos de pago consultados: {user.email} ({metodos.count()} métodos)")
+            logger.info(
+                f"💳 Métodos de pago consultados: {user.email} ({metodos.count()} métodos)"
+            )
 
-            return Response({
-                'metodos_pago': serializer.data,
-                'total': metodos.count()
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {"metodos_pago": serializer.data, "total": metodos.count()},
+                status=status.HTTP_200_OK,
+            )
 
         # POST - Crear nuevo método
         serializer = CrearMetodoPagoSerializer(
-            data=request.data,
-            context={'request': request}
+            data=request.data, context={"request": request}
         )
 
         if serializer.is_valid():
@@ -911,24 +1020,30 @@ def metodos_pago(request):
                 f"Comprobante: {'Sí' if metodo.tiene_comprobante else 'No'}"
             )
 
-            return Response({
-                'mensaje': 'Método de pago guardado exitosamente',
-                'metodo_pago': MetodoPagoSerializer(metodo).data
-            }, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    "mensaje": "Método de pago guardado exitosamente",
+                    "metodo_pago": MetodoPagoSerializer(metodo).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
 
-        logger.warning(f"⚠️ Validación fallida al crear método de pago: {user.email} - {serializer.errors}")
+        logger.warning(
+            f"⚠️ Validación fallida al crear método de pago: {user.email} - {serializer.errors}"
+        )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     except Exception as e:
         logger.error(f"❌ Error con métodos de pago: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al gestionar métodos de pago'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al gestionar métodos de pago"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
-#@throttle_classes([UploadThrottle])
+# @throttle_classes([UploadThrottle])
 def detalle_metodo_pago(request, metodo_id):
     """
     GET: Obtiene un método de pago específico
@@ -938,28 +1053,20 @@ def detalle_metodo_pago(request, metodo_id):
     """
     try:
         user = request.user
-        metodo = get_object_or_404(
-            MetodoPago,
-            id=metodo_id,
-            user=user,
-            activo=True
-        )
+        metodo = get_object_or_404(MetodoPago, id=metodo_id, user=user, activo=True)
 
-        if request.method == 'GET':
+        if request.method == "GET":
             serializer = MetodoPagoSerializer(metodo)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
-        elif request.method in ['PUT', 'PATCH']:
+        elif request.method in ["PUT", "PATCH"]:
             serializer = ActualizarMetodoPagoSerializer(
-                metodo,
-                data=request.data,
-                partial=True,
-                context={'request': request}
+                metodo, data=request.data, partial=True, context={"request": request}
             )
 
             if serializer.is_valid():
                 # ✅ CORREGIDO: Si se marca como predeterminado, usar select_for_update
-                if request.data.get('es_predeterminado'):
+                if request.data.get("es_predeterminado"):
                     with transaction.atomic():
                         user.metodos_pago.select_for_update().filter(
                             activo=True
@@ -968,14 +1075,21 @@ def detalle_metodo_pago(request, metodo_id):
                 else:
                     serializer.save()
 
-                logger.info(f"✅ Método de pago actualizado: {user.email} - {metodo.alias}")
+                logger.info(
+                    f"✅ Método de pago actualizado: {user.email} - {metodo.alias}"
+                )
 
-                return Response({
-                    'mensaje': 'Método de pago actualizado exitosamente',
-                    'metodo_pago': MetodoPagoSerializer(metodo).data
-                }, status=status.HTTP_200_OK)
+                return Response(
+                    {
+                        "mensaje": "Método de pago actualizado exitosamente",
+                        "metodo_pago": MetodoPagoSerializer(metodo).data,
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
-            logger.warning(f"⚠️ Validación fallida al actualizar método de pago: {user.email} - {serializer.errors}")
+            logger.warning(
+                f"⚠️ Validación fallida al actualizar método de pago: {user.email} - {serializer.errors}"
+            )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         # DELETE - Desactivar
@@ -987,23 +1101,27 @@ def detalle_metodo_pago(request, metodo_id):
 
             logger.info(f"🗑️ Método de pago desactivado: {user.email} - {metodo.alias}")
 
-            return Response({
-                'mensaje': 'Método de pago eliminado exitosamente'
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {"mensaje": "Método de pago eliminado exitosamente"},
+                status=status.HTTP_200_OK,
+            )
 
     except MetodoPago.DoesNotExist:
-        logger.warning(f"⚠️ Método de pago no encontrado: {metodo_id} - Usuario: {request.user.email}")
-        return Response({
-            'error': 'Método de pago no encontrado'
-        }, status=status.HTTP_404_NOT_FOUND)
+        logger.warning(
+            f"⚠️ Método de pago no encontrado: {metodo_id} - Usuario: {request.user.email}"
+        )
+        return Response(
+            {"error": "Método de pago no encontrado"}, status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as e:
         logger.error(f"❌ Error con método de pago: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al gestionar método de pago'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al gestionar método de pago"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def metodo_pago_predeterminado(request):
     """
@@ -1011,39 +1129,39 @@ def metodo_pago_predeterminado(request):
     """
     try:
         user = request.user
-        metodo = user.metodos_pago.filter(
-            es_predeterminado=True,
-            activo=True
-        ).first()
+        metodo = user.metodos_pago.filter(es_predeterminado=True, activo=True).first()
 
         if not metodo:
             # Si no hay predeterminado, devolver el primero
             metodo = user.metodos_pago.filter(activo=True).first()
 
             if not metodo:
-                return Response({
-                    'mensaje': 'No tienes métodos de pago guardados'
-                }, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"mensaje": "No tienes métodos de pago guardados"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         serializer = MetodoPagoSerializer(metodo)
-        return Response({
-            'metodo_pago': serializer.data
-        }, status=status.HTTP_200_OK)
+        return Response({"metodo_pago": serializer.data}, status=status.HTTP_200_OK)
 
     except Exception as e:
-        logger.error(f"❌ Error obteniendo método de pago predeterminado: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al obtener método de pago'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(
+            f"❌ Error obteniendo método de pago predeterminado: {e}", exc_info=True
+        )
+        return Response(
+            {"error": "Error al obtener método de pago"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 # ============================================
 # ✅ UBICACIÓN EN TIEMPO REAL (REST) - CORREGIDO
 # ============================================
 
-@api_view(['POST'])
+
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
-#@throttle_classes([UbicacionThrottle])
+# @throttle_classes([UbicacionThrottle])
 def actualizar_ubicacion(request):
     """
     Actualiza la ubicación del usuario
@@ -1059,47 +1177,317 @@ def actualizar_ubicacion(request):
             logger.warning(f"⚠️ Ubicación inválida {request.user.email}: {ser.errors}")
             return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        lat, lon = ser.validated_data['latitud'], ser.validated_data['longitud']
+        lat, lon = ser.validated_data["latitud"], ser.validated_data["longitud"]
 
         with transaction.atomic():
             ubic, _ = UbicacionUsuario.objects.select_for_update().update_or_create(
-                user=request.user,
-                defaults={'latitud': lat, 'longitud': lon}
+                user=request.user, defaults={"latitud": lat, "longitud": lon}
             )
 
         logger.info(f"📡 Ubicación actualizada: {request.user.email} -> ({lat}, {lon})")
-        return Response({
-            'mensaje': 'Ubicación actualizada',
-            'ubicacion': UbicacionUsuarioSerializer(ubic).data
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "mensaje": "Ubicación actualizada",
+                "ubicacion": UbicacionUsuarioSerializer(ubic).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     except Exception as e:
         logger.error(f"❌ Error actualizando ubicación: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al actualizar ubicación'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al actualizar ubicación"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def mi_ubicacion(request):
     """
     Devuelve la última ubicación del usuario autenticado
     """
     try:
-        ubic = UbicacionUsuario.objects.select_related('user').filter(user=request.user).first()
+        ubic = (
+            UbicacionUsuario.objects.select_related("user")
+            .filter(user=request.user)
+            .first()
+        )
         if not ubic:
-            return Response({
-                'mensaje': 'Aún no reportas ubicación'
-            }, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"mensaje": "Aún no reportas ubicación"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         return Response(
-            UbicacionUsuarioSerializer(ubic).data,
-            status=status.HTTP_200_OK
+            UbicacionUsuarioSerializer(ubic).data, status=status.HTTP_200_OK
         )
 
     except Exception as e:
         logger.error(f"❌ Error obteniendo mi ubicación: {e}", exc_info=True)
-        return Response({
-            'error': 'Error al obtener ubicación'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "Error al obtener ubicación"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# ============================================
+# SOLICITUDES DE CAMBIO DE ROL (USUARIO)
+# ============================================
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def mis_solicitudes_cambio_rol(request):
+    """
+    GET: Obtiene mis solicitudes de cambio de rol
+    POST: Crea una nueva solicitud de cambio de rol
+    """
+    try:
+        user = request.user
+
+        # -----------------------------------------------------
+        # GET → LISTAR SOLICITUDES
+        # -----------------------------------------------------
+        if request.method == "GET":
+
+            solicitudes = user.solicitudes_cambio_rol.all().order_by("-creado_en")
+
+            pendientes = solicitudes.filter(estado="PENDIENTE").count()
+            aceptadas = solicitudes.filter(estado="ACEPTADA").count()
+            rechazadas = solicitudes.filter(estado="RECHAZADA").count()
+
+            serializer = SolicitudCambioRolListSerializer(solicitudes, many=True)
+
+            logger.info(f"📌 Solicitudes consultadas por {user.email}")
+
+            return Response(
+                {
+                    "solicitudes": serializer.data,
+                    "total": solicitudes.count(),
+                    "pendientes": pendientes,
+                    "aceptadas": aceptadas,
+                    "rechazadas": rechazadas,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # -----------------------------------------------------
+        # POST → CREAR SOLICITUD
+        # -----------------------------------------------------
+        # =====================================================
+        elif request.method == "POST":
+            try:
+                rol_solicitado = request.data.get("rol_solicitado")
+
+                if not rol_solicitado:
+                    return Response(
+                        {
+                            "error": "❌ rol_solicitado es requerido (PROVEEDOR o REPARTIDOR)"
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                if rol_solicitado not in ["PROVEEDOR", "REPARTIDOR"]:
+                    return Response(
+                        {"error": "❌ Rol inválido. Opciones: PROVEEDOR, REPARTIDOR"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                logger.info(
+                    f"📝 Creando solicitud de cambio de rol para {user.email} → {rol_solicitado}"
+                )
+
+                # ============================================
+                # ELEGIR SERIALIZER SEGÚN ROL
+                # ============================================
+                if rol_solicitado == "PROVEEDOR":
+                    from .serializers import CrearSolicitudProveedorSerializer
+
+                    serializer_class = CrearSolicitudProveedorSerializer
+
+                elif rol_solicitado == "REPARTIDOR":
+                    from .serializers import CrearSolicitudRepartidorSerializer
+
+                    serializer_class = CrearSolicitudRepartidorSerializer
+
+                # ============================================
+                # VALIDAR Y CREAR SOLICITUD
+                # ============================================
+                serializer = serializer_class(
+                    data=request.data, context={"request": request}
+                )
+
+                if serializer.is_valid():
+                    solicitud = serializer.save()
+
+                    logger.info(
+                        f"✅ Solicitud {rol_solicitado} creada: {user.email} (ID: {solicitud.id})"
+                    )
+
+                    return Response(
+                        {
+                            "mensaje": f"✅ Solicitud para {rol_solicitado} creada exitosamente",
+                            "solicitud": SolicitudCambioRolDetalleSerializer(
+                                solicitud
+                            ).data,
+                        },
+                        status=status.HTTP_201_CREATED,
+                    )
+                else:
+                    logger.warning(f"⚠️ Errores de validación: {serializer.errors}")
+                    return Response(
+                        {
+                            "error": "❌ Error de validación",
+                            "detalles": serializer.errors,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            except Exception as e:
+                logger.error(f"❌ Error creando solicitud: {e}", exc_info=True)
+                return Response(
+                    {
+                        "error": "❌ Error al crear solicitud",
+                        "detalle": str(e) if settings.DEBUG else "Intenta nuevamente",
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error general en mis_solicitudes_cambio_rol: {e}", exc_info=True
+        )
+        return Response(
+            {"error": "Error al gestionar solicitudes"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def detalle_solicitud_cambio_rol(request, solicitud_id):
+    """
+    GET: Obtiene el detalle de una solicitud específica
+    """
+    try:
+        user = request.user
+        solicitud = get_object_or_404(SolicitudCambioRol, id=solicitud_id, user=user)
+
+        serializer = SolicitudCambioRolDetalleSerializer(solicitud)
+
+        logger.info(f"👁️ Solicitud consultada: {user.email} - {solicitud.id}")
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    except SolicitudCambioRol.DoesNotExist:
+        return Response(
+            {"error": "Solicitud no encontrada"}, status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"❌ Error obteniendo solicitud: {e}", exc_info=True)
+        return Response(
+            {"error": "Error al obtener solicitud"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cambiar_rol_activo(request):
+    """
+    POST: Cambia el rol activo del usuario
+
+    Body:
+    {
+        "nuevo_rol": "PROVEEDOR"
+    }
+
+    Response:
+    {
+        "mensaje": "Rol cambiado a PROVEEDOR",
+        "rol_anterior": "USUARIO",
+        "rol_nuevo": "PROVEEDOR",
+        "roles_disponibles": ["USUARIO", "PROVEEDOR"]
+    }
+    """
+    try:
+        user = request.user
+        nuevo_rol = request.data.get("nuevo_rol")
+
+        if not nuevo_rol:
+            return Response(
+                {"error": "El campo nuevo_rol es requerido"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validar que tenga ese rol
+        if not user.tiene_rol(nuevo_rol):
+            return Response(
+                {"error": f"No tienes el rol {nuevo_rol}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Cambiar rol
+        resultado = user.cambiar_rol_activo(nuevo_rol)
+
+        logger.info(f"🔄 Rol activo cambiado: {user.email} → {nuevo_rol}")
+
+        return Response(
+            {
+                "mensaje": resultado["mensaje"],
+                "rol_anterior": resultado["rol_anterior"],
+                "rol_nuevo": resultado["rol_nuevo"],
+                "roles_disponibles": user.obtener_todos_los_roles(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except ValidationError as e:
+        logger.warning(f"⚠️ Validación fallida: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"❌ Error cambiando rol activo: {e}", exc_info=True)
+        return Response(
+            {"error": "Error al cambiar rol"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mis_roles(request):
+    """
+    GET: Obtiene todos los roles del usuario
+
+    Response:
+    {
+        "rol_principal": "USUARIO",
+        "rol_activo": "USUARIO",
+        "roles_disponibles": ["USUARIO"],
+        "verificado": false,
+        "puede_solicitar": true
+    }
+    """
+    try:
+        user = request.user
+
+        return Response(
+            {
+                "rol_principal": user.rol,
+                "rol_activo": user.rol_activo,
+                "roles_disponibles": user.obtener_todos_los_roles(),
+                "verificado": user.verificado,
+                "puede_solicitar": user.verificado
+                and user.is_active
+                and not user.cuenta_desactivada,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Error obteniendo mis roles: {e}", exc_info=True)
+        return Response(
+            {"error": "Error al obtener roles"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

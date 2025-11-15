@@ -7,7 +7,7 @@ import 'repartidor_service.dart';
 import '../apis/helpers/api_exception.dart';
 
 /// Servicio de Ubicación para Repartidores
-/// ✅ REFACTORIZADO: Ahora usa RepartidorService en lugar de UsuariosApi
+/// ✅ OPTIMIZADO: Verificación eficiente de autenticación
 /// ✅ Compatible con Geolocator 12.x
 /// ✅ Modos: Periódico y Tiempo Real
 /// ✅ Sin lógica de UI
@@ -92,22 +92,20 @@ class UbicacionService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ VALIDACIÓN DE AUTENTICACIÓN
+  // ✅ VALIDACIÓN DE AUTENTICACIÓN OPTIMIZADA
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Verifica que el usuario esté autenticado antes de enviar ubicación
+  /// ✅ OPTIMIZADO: Verifica autenticación sin recargar tokens innecesariamente
   Future<bool> _verificarAutenticacion() async {
     try {
-      _log('🔍 Verificando autenticación...');
-
-      // Cargar tokens si no están en memoria
-      await _repartidorService.client.loadTokens();
+      // ✅ NUEVO: Solo cargar tokens si NO están ya cargados
+      if (!_repartidorService.client.tokensLoaded) {
+        _log('🔍 Tokens no cargados, cargando desde storage...');
+        await _repartidorService.client.loadTokens();
+      }
 
       final isAuth = _repartidorService.client.isAuthenticated;
       final token = _repartidorService.client.accessToken;
-
-      _log('   isAuthenticated: $isAuth');
-      _log('   Token presente: ${token != null}');
 
       if (!isAuth) {
         _log('❌ No autenticado - no se puede enviar ubicación');
@@ -115,9 +113,9 @@ class UbicacionService {
         return false;
       }
 
+      // ✅ OPTIMIZADO: Log reducido (solo en debug si es necesario)
       if (token != null) {
         _log('✅ Autenticación verificada');
-        _log('   Token: ${token.substring(0, 20)}...');
       }
 
       return true;

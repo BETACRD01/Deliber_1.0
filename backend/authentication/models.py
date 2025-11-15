@@ -5,37 +5,21 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
-from allauth.socialaccount.models import SocialAccount
-from datetime import date
+from django.utils import timezone
+from datetime import date, timedelta
 import re
 import logging
 
 logger = logging.getLogger('authentication')
 
 
+
 class User(AbstractUser):
     """
-    Modelo de usuario personalizado con sistema de roles
+    Modelo de usuario personalizado - Solo usuarios comunes
     """
 
     # ==========================================
-    # ROLES DEL SISTEMA
-    # ==========================================
-    class RolChoices(models.TextChoices):
-        USUARIO = 'USUARIO', 'Usuario'
-        REPARTIDOR = 'REPARTIDOR', 'Repartidor'
-        PROVEEDOR = 'PROVEEDOR', 'Proveedor'
-        ADMINISTRADOR = 'ADMINISTRADOR', 'Administrador'
-
-    rol = models.CharField(
-        max_length=20,
-        choices=RolChoices.choices,
-        default=RolChoices.USUARIO,
-        verbose_name='Rol del usuario',
-        help_text='Define los permisos y accesos del usuario'
-    )
-
-    # =================================class Repartidor(TimeStampedModel)========
     # CAMPOS BÁSICOS DE USUARIO
     # ==========================================
     first_name = models.CharField(
@@ -144,12 +128,6 @@ class User(AbstractUser):
         help_text='Promociones, ofertas especiales y novedades'
     )
 
-    notificaciones_pedidos = models.BooleanField(
-        default=True,
-        verbose_name='Notificaciones de pedidos',
-        help_text='Actualizaciones sobre el estado de pedidos'
-    )
-
     notificaciones_push = models.BooleanField(
         default=True,
         verbose_name='Notificaciones push',
@@ -157,106 +135,10 @@ class User(AbstractUser):
     )
 
     # ==========================================
-    # AUTENTICACIÓN CON GOOGLE (django-allauth)
-    # ==========================================
-    google_picture = models.URLField(
-        blank=True,
-        null=True,
-        verbose_name='Foto de Google',
-        help_text='URL de la foto de perfil de Google'
-    )
-
-    # ==========================================
-    # CAMPOS ESPECÍFICOS PARA REPARTIDORES
-    # ==========================================
-    vehiculo = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        verbose_name='Vehículo',
-        help_text='Tipo de vehículo del repartidor'
-    )
-
-    placa_vehiculo = models.CharField(
-        max_length=20,
-        blank=True,
-        null=True,
-        validators=[
-            RegexValidator(
-                regex=r'^[A-Z]{3}-\d{3,4}$',
-                message='Formato de placa inválido. Use: ABC-1234 o ABC-123'
-            )
-        ],
-        verbose_name='Placa del vehículo',
-        help_text='Placa del vehículo (formato ecuatoriano: ABC-1234)'
-    )
-
-    licencia_conducir = models.CharField(
-        max_length=50,
-        blank=True,
-        null=True,
-        verbose_name='Licencia de conducir',
-        help_text='Número de licencia de conducir'
-    )
-
-    disponible = models.BooleanField(
-        default=True,
-        verbose_name='Disponible',
-        help_text='Indica si el repartidor está disponible'
-    )
-
-    # ==========================================
-    # CAMPOS ESPECÍFICOS PARA PROVEEDORES
-    # ==========================================
-    nombre_negocio = models.CharField(
-        max_length=200,
-        blank=True,
-        null=True,
-        verbose_name='Nombre del negocio',
-        help_text='Nombre comercial del proveedor'
-    )
-
-    ruc = models.CharField(
-        max_length=13,
-        blank=True,
-        null=True,
-        unique=True,
-        validators=[
-            RegexValidator(
-                regex=r'^\d{13}$',
-                message='El RUC debe tener exactamente 13 dígitos'
-            )
-        ],
-        verbose_name='RUC',
-        help_text='Registro Único de Contribuyentes (13 dígitos)'
-    )
-
-    direccion_negocio = models.TextField(
-        blank=True,
-        null=True,
-        verbose_name='Dirección del negocio',
-        help_text='Dirección física del negocio'
-    )
-
-    categoria_negocio = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        verbose_name='Categoría del negocio',
-        help_text='Tipo de productos/servicios que ofrece'
-    )
-
-    verificado = models.BooleanField(
-        default=False,
-        verbose_name='Verificado',
-        help_text='Indica si el proveedor ha sido verificado por el admin'
-    )
-
-    # ==========================================
-    # ✅ RECUPERACIÓN DE CONTRASEÑA CON CÓDIGO (ACTUALIZADO - SEGURO)
+    # RECUPERACIÓN DE CONTRASEÑA (SEGURA)
     # ==========================================
     reset_password_code = models.CharField(
-        max_length=128,  # ✅ CAMBIADO: Para almacenar hash (antes era 6)
+        max_length=128,
         blank=True,
         null=True,
         verbose_name='Código de recuperación (hasheado)',
@@ -268,10 +150,10 @@ class User(AbstractUser):
         null=True,
         verbose_name='Expiración del código',
         help_text='Fecha límite para usar el código (15 minutos)',
-        db_index=True  # ✅ AGREGADO: Índice para búsquedas rápidas
+        db_index=True
     )
 
-    reset_password_attempts = models.IntegerField(  # ✅ NUEVO CAMPO
+    reset_password_attempts = models.IntegerField(
         default=0,
         verbose_name='Intentos de verificación del código',
         help_text='Contador de intentos fallidos al verificar código de recuperación'
@@ -290,6 +172,9 @@ class User(AbstractUser):
         verbose_name='Última actualización'
     )
 
+    # ==========================================
+    # ESTADO DE CUENTA
+    # ==========================================
     cuenta_desactivada = models.BooleanField(
         default=False,
         verbose_name='Cuenta desactivada',
@@ -348,48 +233,16 @@ class User(AbstractUser):
             models.Index(fields=['email']),
             models.Index(fields=['username']),
             models.Index(fields=['celular']),
-            models.Index(fields=['rol']),
             models.Index(fields=['cuenta_desactivada']),
-            models.Index(fields=['ruc']),
-            models.Index(fields=['verificado', 'rol']),
-            models.Index(fields=['disponible', 'rol']),
-            # ✅ NOTA: reset_password_expire ya tiene db_index=True en el campo,
-            # no hace falta agregarlo aquí también
+            models.Index(fields=['reset_password_expire']),
         ]
 
     def __str__(self):
-        return f"{self.email} - {self.get_full_name()} ({self.get_rol_display()})"
+        return f"{self.email} - {self.get_full_name()}"
 
     # ==========================================
-    # MÉTODOS PARA VERIFICAR ROLES
+    # MÉTODOS DE VERIFICACIÓN Y VALIDACIÓN
     # ==========================================
-    def es_usuario(self):
-        """Verifica si es un usuario regular"""
-        return self.rol == self.RolChoices.USUARIO
-
-    def es_repartidor(self):
-        """Verifica si es repartidor"""
-        return self.rol == self.RolChoices.REPARTIDOR
-
-    def es_proveedor(self):
-        """Verifica si es proveedor"""
-        return self.rol == self.RolChoices.PROVEEDOR
-
-    def es_administrador(self):
-        """Verifica si es administrador"""
-        return self.rol == self.RolChoices.ADMINISTRADOR or self.is_superuser
-
-    def puede_crear_rifas(self):
-        """Solo administradores pueden crear rifas"""
-        return self.es_administrador()
-
-    def puede_gestionar_usuarios(self):
-        """Solo administradores pueden gestionar usuarios"""
-        return self.es_administrador()
-
-    def puede_verificar_proveedores(self):
-        """Solo administradores pueden verificar proveedores"""
-        return self.es_administrador()
 
     def puede_recibir_emails(self):
         """Verifica si el usuario puede recibir emails"""
@@ -405,76 +258,9 @@ class User(AbstractUser):
 
     def esta_bloqueado(self):
         """Verifica si la cuenta está temporalmente bloqueada"""
-        from django.utils import timezone
         if self.cuenta_bloqueada_hasta:
             return timezone.now() < self.cuenta_bloqueada_hasta
         return False
-
-    # ==========================================
-    # VALIDACIONES PERSONALIZADAS
-    # ==========================================
-    def clean(self):
-        """Validaciones antes de guardar"""
-        super().clean()
-
-        # Validar edad mayor de 18 años (si se proporciona)
-        if self.fecha_nacimiento:
-            edad = self.get_edad()
-            if edad and edad < 18:
-                raise ValidationError({
-                    'fecha_nacimiento': 'Debes ser mayor de 18 años para registrarte'
-                })
-
-        # Validar campos requeridos para repartidores
-        if self.rol == self.RolChoices.REPARTIDOR:
-            if not self.vehiculo:
-                raise ValidationError({
-                    'vehiculo': 'El vehículo es requerido para repartidores'
-                })
-            if not self.licencia_conducir:
-                raise ValidationError({
-                    'licencia_conducir': 'La licencia de conducir es requerida para repartidores'
-                })
-
-        # Validar campos requeridos para proveedores
-        if self.rol == self.RolChoices.PROVEEDOR:
-            if not self.nombre_negocio:
-                raise ValidationError({
-                    'nombre_negocio': 'El nombre del negocio es requerido para proveedores'
-                })
-            if not self.ruc:
-                raise ValidationError({
-                    'ruc': 'El RUC es requerido para proveedores'
-                })
-
-            # Validar RUC ecuatoriano
-            if self.ruc:
-                self._validar_ruc_interno(self.ruc)
-
-    def _validar_ruc_interno(self, ruc):
-        """Validación interna del RUC"""
-        if len(ruc) != 13:
-            raise ValidationError('El RUC debe tener exactamente 13 dígitos')
-
-        if not ruc.isdigit():
-            raise ValidationError('El RUC debe contener solo números')
-
-        provincia = int(ruc[:2])
-        if provincia < 1 or provincia > 24:
-            raise ValidationError('Código de provincia inválido en el RUC')
-
-        tercero = int(ruc[2])
-        if tercero < 0 or tercero > 9:
-            raise ValidationError('Tercer dígito del RUC inválido')
-
-        return True
-
-    # ==========================================
-    # MÉTODOS PERSONALIZADOS
-    # ==========================================
-    def es_autenticacion_google(self):
-        """Verifica si el usuario usa Google para login"""
-        return SocialAccount.objects.filter(user=self, provider='google').exists()
 
     def get_edad(self):
         """Calcula la edad del usuario"""
@@ -490,9 +276,12 @@ class User(AbstractUser):
 
         return edad
 
+    # ==========================================
+    # MÉTODOS DE DESACTIVACIÓN DE CUENTA
+    # ==========================================
+
     def desactivar_cuenta(self, razon=None):
         """Desactiva la cuenta del usuario"""
-        from django.utils import timezone
         self.cuenta_desactivada = True
         self.fecha_desactivacion = timezone.now()
         if razon:
@@ -513,9 +302,12 @@ class User(AbstractUser):
 
         logger.info(f"Cuenta reactivada: {self.email}")
 
+    # ==========================================
+    # MÉTODOS DE SEGURIDAD - LOGIN
+    # ==========================================
+
     def registrar_login_fallido(self):
         """Registra un intento de login fallido"""
-        from django.utils import timezone
         from django.conf import settings
 
         self.intentos_login_fallidos += 1
@@ -524,7 +316,7 @@ class User(AbstractUser):
         if getattr(settings, 'ENABLE_LOGIN_BLOCKING', True):
             # Bloquear cuenta después de 5 intentos fallidos
             if self.intentos_login_fallidos >= 5:
-                self.cuenta_bloqueada_hasta = timezone.now() + timezone.timedelta(minutes=15)
+                self.cuenta_bloqueada_hasta = timezone.now() + timedelta(minutes=15)
                 logger.warning(
                     f"Cuenta bloqueada por múltiples intentos fallidos: {self.email} "
                     f"({self.intentos_login_fallidos} intentos)"
@@ -547,6 +339,22 @@ class User(AbstractUser):
 
         logger.info(f"Login exitoso: {self.email} desde IP {ip_address}")
 
+    # ==========================================
+    # MÉTODOS DE VALIDACIÓN
+    # ==========================================
+
+    def clean(self):
+        """Validaciones antes de guardar"""
+        super().clean()
+
+        # Validar edad mayor de 18 años (si se proporciona)
+        if self.fecha_nacimiento:
+            edad = self.get_edad()
+            if edad and edad < 18:
+                raise ValidationError({
+                    'fecha_nacimiento': 'Debes ser mayor de 18 años para registrarte'
+                })
+
     def save(self, *args, **kwargs):
         """Override save para limpiar espacios en blanco"""
         if self.first_name:
@@ -563,24 +371,6 @@ class User(AbstractUser):
     # ==========================================
     # MÉTODOS ESTÁTICOS
     # ==========================================
-    @staticmethod
-    def validar_ruc_ecuatoriano(ruc):
-        """Valida que el RUC sea válido según algoritmo ecuatoriano"""
-        if len(ruc) != 13:
-            raise ValidationError('El RUC debe tener exactamente 13 dígitos')
-
-        if not ruc.isdigit():
-            raise ValidationError('El RUC debe contener solo números')
-
-        provincia = int(ruc[:2])
-        if provincia < 1 or provincia > 24:
-            raise ValidationError('Código de provincia inválido en el RUC')
-
-        tercero = int(ruc[2])
-        if tercero < 0 or tercero > 9:
-            raise ValidationError('Tercer dígito del RUC inválido')
-
-        return True
 
     @staticmethod
     def validar_password(password):
@@ -595,3 +385,211 @@ class User(AbstractUser):
             raise ValidationError('La contraseña debe contener al menos un número')
 
         return True
+    # ==========================================
+    # ROLES Y GESTIÓN DE ACCESO
+    # ==========================================
+    class RolChoices(models.TextChoices):
+        """Opciones de roles disponibles en el sistema"""
+        USUARIO = 'USUARIO', 'Usuario Normal'
+        PROVEEDOR = 'PROVEEDOR', 'Proveedor'
+        REPARTIDOR = 'REPARTIDOR', 'Repartidor'
+        ADMINISTRADOR = 'ADMINISTRADOR', 'Administrador'
+
+    rol = models.CharField(
+        max_length=20,
+        choices=RolChoices.choices,
+        default=RolChoices.USUARIO,
+        verbose_name='Rol Principal',
+        help_text='Rol principal del usuario',
+        db_index=True
+    )
+
+    rol_activo = models.CharField(
+        max_length=20,
+        choices=RolChoices.choices,
+        default=RolChoices.USUARIO,
+        verbose_name='Rol Activo',
+        help_text='Rol con el que está operando actualmente',
+        db_index=True
+    )
+
+    roles_adicionales = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name='Roles Adicionales',
+        help_text='Lista de roles adicionales activos (además del rol principal)'
+    )
+
+    verificado = models.BooleanField(
+        default=False,
+        verbose_name='Usuario Verificado',
+        help_text='Si el usuario ha sido verificado por un administrador',
+        db_index=True
+    )
+
+    # ==========================================
+    # MÉTODOS PARA GESTIÓN DE ROLES
+    # ==========================================
+    
+    def tiene_rol(self, rol):
+        """
+        Verifica si el usuario tiene un rol específico
+        
+        Args:
+            rol (str): Rol a verificar (ej: 'PROVEEDOR')
+        
+        Returns:
+            bool: True si tiene el rol
+        """
+        if self.rol == rol:
+            return True
+        return rol in self.roles_adicionales
+
+    def obtener_todos_los_roles(self):
+        """
+        Retorna una lista de todos los roles que tiene el usuario
+        
+        Returns:
+            list: Lista de roles activos
+        """
+        roles = [self.rol]
+        if isinstance(self.roles_adicionales, list):
+            roles.extend(self.roles_adicionales)
+        return list(set(roles))  # Eliminar duplicados
+
+    def puede_cambiar_rol_a(self, nuevo_rol):
+        """
+        Valida si el usuario puede cambiar a un rol específico
+        
+        Args:
+            nuevo_rol (str): Nuevo rol
+        
+        Returns:
+            tuple: (puede_cambiar: bool, razón: str)
+        """
+        # No puede cambiar a rol ADMINISTRADOR
+        if nuevo_rol == self.RolChoices.ADMINISTRADOR:
+            return (False, "No puedes cambiar a rol ADMINISTRADOR")
+        
+        # Debe estar verificado para cambiar de rol
+        if not self.verificado:
+            return (False, "Debes estar verificado para cambiar de rol")
+        
+        # Debe estar activo
+        if not self.is_active:
+            return (False, "Tu cuenta debe estar activa")
+        
+        # No debe estar desactivada por el usuario
+        if self.cuenta_desactivada:
+            return (False, "Tu cuenta está desactivada")
+        
+        return (True, "Puedes cambiar de rol")
+
+    def cambiar_rol_activo(self, nuevo_rol):
+        """
+        Cambia el rol activo del usuario
+        
+        Args:
+            nuevo_rol (str): Nuevo rol a activar
+        
+        Returns:
+            dict: Resultado del cambio
+        
+        Raises:
+            ValidationError: Si no puede cambiar
+        """
+        puede_cambiar, razon = self.puede_cambiar_rol_a(nuevo_rol)
+        if not puede_cambiar:
+            raise ValidationError(razon)
+        
+        # Verificar que el usuario tenga el rol
+        if not self.tiene_rol(nuevo_rol):
+            raise ValidationError(f"No tienes el rol {nuevo_rol}")
+        
+        rol_anterior = self.rol_activo
+        self.rol_activo = nuevo_rol
+        self.save(update_fields=['rol_activo', 'updated_at'])
+        
+        logger.info(
+            f"✅ Rol activo cambiado para {self.email}: "
+            f"{rol_anterior} → {nuevo_rol}"
+        )
+        
+        return {
+            'exitoso': True,
+            'rol_anterior': rol_anterior,
+            'rol_nuevo': nuevo_rol,
+            'mensaje': f'Rol cambiado a {nuevo_rol}'
+        }
+
+    def agregar_rol(self, nuevo_rol):
+        """
+        Agrega un rol adicional al usuario
+        
+        Args:
+            nuevo_rol (str): Rol a agregar
+        
+        Returns:
+            bool: True si se agregó
+        """
+        if self.tiene_rol(nuevo_rol):
+            return False  # Ya tiene ese rol
+        
+        if nuevo_rol == self.RolChoices.ADMINISTRADOR:
+            raise ValidationError("No puedes agregar rol ADMINISTRADOR")
+        
+        if not isinstance(self.roles_adicionales, list):
+            self.roles_adicionales = []
+        
+        self.roles_adicionales.append(nuevo_rol)
+        self.save(update_fields=['roles_adicionales', 'updated_at'])
+        
+        logger.info(f"✅ Rol {nuevo_rol} agregado a {self.email}")
+        return True
+
+    def remover_rol(self, rol_a_remover):
+        """
+        Remueve un rol adicional del usuario
+        
+        Args:
+            rol_a_remover (str): Rol a remover
+        
+        Returns:
+            bool: True si se removió
+        """
+        if rol_a_remover == self.rol:
+            raise ValidationError("No puedes remover tu rol principal")
+        
+        if not isinstance(self.roles_adicionales, list):
+            self.roles_adicionales = []
+        
+        if rol_a_remover not in self.roles_adicionales:
+            return False
+        
+        self.roles_adicionales.remove(rol_a_remover)
+        
+        # Si el rol removido era el activo, cambiar al principal
+        if self.rol_activo == rol_a_remover:
+            self.rol_activo = self.rol
+        
+        self.save(update_fields=['roles_adicionales', 'rol_activo', 'updated_at'])
+        
+        logger.info(f"✅ Rol {rol_a_remover} removido de {self.email}")
+        return True
+
+    def es_administrador(self):
+        """Verifica si el usuario es administrador"""
+        return self.rol == self.RolChoices.ADMINISTRADOR or self.is_superuser
+
+    def es_proveedor(self):
+        """Verifica si el usuario es proveedor"""
+        return self.tiene_rol(self.RolChoices.PROVEEDOR)
+
+    def es_repartidor(self):
+        """Verifica si el usuario es repartidor"""
+        return self.tiene_rol(self.RolChoices.REPARTIDOR)
+
+    def es_usuario_normal(self):
+        """Verifica si es solo usuario normal"""
+        return (self.rol == self.RolChoices.USUARIO and 
+                len(self.roles_adicionales) == 0)

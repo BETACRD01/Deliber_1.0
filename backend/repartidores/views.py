@@ -70,19 +70,82 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 100
 
 
-# ==========================================================
-# PERFIL DEL REPARTIDOR (propio)
-# ==========================================================
+# ==========================================
+# ✅ AGREGAR ESTE HELPER AL INICIO DE views.py
+# (después de los imports)
+# ==========================================
+
+def construir_url_media_view(file_field, request):
+    """
+    Construye URL completa para archivos media desde vistas.
+    
+    Args:
+        file_field: Campo de archivo (FileField/ImageField)
+        request: Request HTTP
+    
+    Returns:
+        str: URL completa del archivo, o None si no hay archivo
+    """
+    if not file_field:
+        return None
+    
+    try:
+        return request.build_absolute_uri(file_field.url)
+    except Exception as e:
+        logger.error(f"Error construyendo URL: {e}")
+        return None
+
+
+def construir_perfil_response(repartidor, request):
+    """
+    ✅ HELPER: Construye respuesta de perfil con URLs completas.
+    Usar en lugar de construir el dict manualmente.
+    """
+    return {
+        'id': repartidor.id,
+        'nombre_completo': repartidor.user.get_full_name(),
+        'email': repartidor.user.email,
+        'foto_perfil': construir_url_media_view(repartidor.foto_perfil, request),
+        'cedula': repartidor.cedula,
+        'telefono': repartidor.telefono,
+        'estado': repartidor.estado,
+        'verificado': repartidor.verificado,
+        'activo': repartidor.activo,
+        'calificacion_promedio': float(repartidor.calificacion_promedio),
+        'entregas_completadas': repartidor.entregas_completadas,
+    }
+
+
+def construir_vehiculo_response(vehiculo, request):
+    """
+    ✅ HELPER: Construye respuesta de vehículo con URLs completas.
+    """
+    return {
+        'id': vehiculo.id,
+        'tipo': vehiculo.tipo,
+        'tipo_display': vehiculo.get_tipo_display(),
+        'placa': vehiculo.placa,
+        'licencia_foto': construir_url_media_view(vehiculo.licencia_foto, request),
+        'activo': vehiculo.activo,
+    }
+
+
+# ==========================================
+# ✅ IMPORTANTE: Actualizar obtener_mi_perfil() para pasar context
+# ==========================================
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsRepartidor])
 @throttle_classes([PerfilThrottle])
 def obtener_mi_perfil(request):
     """
     Devuelve el perfil completo del repartidor autenticado.
+    ✅ Con URLs completas de imágenes
     """
     try:
         repartidor = request.user.repartidor
-        serializer = RepartidorPerfilSerializer(repartidor)
+        # ✅ CRÍTICO: Pasar request en context para construir URLs completas
+        serializer = RepartidorPerfilSerializer(repartidor, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
     except AttributeError:
         logger.error(f"Usuario {request.user.email} no tiene perfil de repartidor")
@@ -91,6 +154,9 @@ def obtener_mi_perfil(request):
             status=status.HTTP_404_NOT_FOUND
         )
 
+# ==========================================
+# ✅ REEMPLAZAR actualizar_mi_perfil() CON ESTA VERSIÓN
+# ==========================================
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated, IsRepartidor])
@@ -99,9 +165,34 @@ def actualizar_mi_perfil(request):
     """
     ✅ ACTUALIZADO: Permite actualizar teléfono, foto de perfil y datos del repartidor.
     Soporta multipart/form-data para subir archivos.
+    ✅ URLs completas en respuesta
     """
     try:
         repartidor = request.user.repartidor
+
+        # ✅ Manejar eliminación de foto
+        eliminar_foto = request.data.get('eliminar_foto_perfil', 'false')
+        if eliminar_foto in ['true', True, '1', 1]:
+            if repartidor.foto_perfil:
+                try:
+                    repartidor.foto_perfil.delete(save=False)
+                except Exception as e:
+                    logger.warning(f"Error eliminando archivo de foto: {e}")
+                
+                repartidor.foto_perfil = None
+                repartidor.save()
+                
+                logger.info(f"✅ Foto eliminada: {repartidor.user.email}")
+                
+                return Response({
+                    "mensaje": "Foto de perfil eliminada correctamente",
+                    "perfil": construir_perfil_response(repartidor, request)
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "mensaje": "No hay foto de perfil para eliminar",
+                    "perfil": construir_perfil_response(repartidor, request)
+                }, status=status.HTTP_200_OK)
 
         # ✅ Manejar foto de perfil (archivo)
         foto_perfil = request.FILES.get('foto_perfil')
@@ -142,19 +233,7 @@ def actualizar_mi_perfil(request):
 
         return Response({
             "mensaje": "Perfil actualizado correctamente",
-            "perfil": {
-                'id': repartidor.id,
-                'nombre_completo': repartidor.user.get_full_name(),
-                'email': repartidor.user.email,
-                'foto_perfil': repartidor.foto_perfil.url if repartidor.foto_perfil else None,
-                'cedula': repartidor.cedula,
-                'telefono': repartidor.telefono,
-                'estado': repartidor.estado,
-                'verificado': repartidor.verificado,
-                'activo': repartidor.activo,
-                'calificacion_promedio': float(repartidor.calificacion_promedio),
-                'entregas_completadas': repartidor.entregas_completadas,
-            }
+            "perfil": construir_perfil_response(repartidor, request)
         }, status=status.HTTP_200_OK)
 
     except AttributeError:
@@ -168,14 +247,19 @@ def actualizar_mi_perfil(request):
             {"error": "Error interno al actualizar perfil."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    # ✅ NUEVO ENDPOINT: Actualizar datos de vehículo
+
+
+# ==========================================
+# ✅ REEMPLAZAR actualizar_datos_vehiculo() CON ESTA VERSIÓN
+# ==========================================
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated, IsRepartidor])
 @throttle_classes([VehiculoThrottle])
 def actualizar_datos_vehiculo(request):
     """
-    ✅ NUEVO: Permite actualizar tipo, placa y subir foto de licencia del vehículo activo.
+    ✅ ACTUALIZADO: Permite actualizar tipo, placa y subir foto de licencia del vehículo activo.
+    ✅ URLs completas en respuesta
     """
     try:
         repartidor = request.user.repartidor
@@ -230,14 +314,7 @@ def actualizar_datos_vehiculo(request):
 
         return Response({
             "mensaje": "Datos del vehículo actualizados correctamente",
-            "vehiculo": {
-                'id': vehiculo_activo.id,
-                'tipo': vehiculo_activo.tipo,
-                'tipo_display': vehiculo_activo.get_tipo_display(),
-                'placa': vehiculo_activo.placa,
-                'licencia_foto': vehiculo_activo.licencia_foto.url if vehiculo_activo.licencia_foto else None,
-                'activo': vehiculo_activo.activo,
-            }
+            "vehiculo": construir_vehiculo_response(vehiculo_activo, request)
         }, status=status.HTTP_200_OK)
 
     except AttributeError:
@@ -251,7 +328,6 @@ def actualizar_datos_vehiculo(request):
             {"error": "Error interno al actualizar vehículo."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsRepartidor])

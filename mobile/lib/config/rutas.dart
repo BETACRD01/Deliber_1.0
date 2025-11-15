@@ -57,6 +57,7 @@ class Rutas {
   static const String repartidorHome = '/repartidor/home';
   static const String repartidorPedidos = '/repartidor/pedidos';
   static const String repartidorHistorial = '/repartidor/historial';
+  static const String perfilRepartidor = '/repartidor/perfil';
 
   // Proveedor
   static const String proveedorHome = '/proveedor/home';

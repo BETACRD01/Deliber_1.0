@@ -885,6 +885,49 @@ class RepartidorService {
     }
   }
 
+  // AGREGAR ESTE MÉTODO en repartidor_service.dart
+  // Después del método actualizarPerfil() existente (línea ~165)
+
+  /// DELETE /api/repartidores/perfil/foto/ (equivalente)
+  /// ✅ NUEVO: Elimina la foto de perfil del repartidor
+  /// Envía un flag al endpoint de actualización para eliminar la foto
+  Future<PerfilRepartidorModel> eliminarFotoPerfil() async {
+    try {
+      _log('🗑️ DELETE: Eliminar foto de perfil');
+
+      // Opción 1: Si el backend acepta un campo booleano 'eliminar_foto_perfil'
+      final response = await _client.patch(
+        ApiConfig.repartidorPerfilActualizar,
+        {'eliminar_foto_perfil': true},
+      );
+
+      // Parsear respuesta
+      final perfilData = response['perfil'] as Map<String, dynamic>;
+      final perfil = PerfilRepartidorModel.fromJson(perfilData);
+
+      // Actualizar caché
+      _perfilCache = perfil;
+
+      _log('✅ Foto de perfil eliminada correctamente');
+      return perfil;
+    } on ApiException {
+      _log('❌ Error eliminando foto de perfil');
+      rethrow;
+    } catch (e, stackTrace) {
+      _log(
+        '❌ Error inesperado eliminando foto',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      throw ApiException(
+        statusCode: 0,
+        message: 'Error al eliminar foto de perfil',
+        errors: {'error': e.toString()},
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // 🧹 GESTIÓN DE CACHÉ
   // ══════════════════════════════════════════════════════════════════════════

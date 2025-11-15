@@ -36,6 +36,10 @@ def home(request):
                 'metodos_pago': '/api/usuarios/metodos-pago/',
                 'fcm_token': '/api/usuarios/fcm-token/',
                 'notificaciones': '/api/usuarios/notificaciones/',
+                'solicitudes_cambio_rol': '/api/usuarios/solicitudes-cambio-rol/',
+                'solicitud_detalle': '/api/usuarios/solicitudes-cambio-rol/<uuid>/',
+                'cambiar_rol_activo': '/api/usuarios/cambiar-rol-activo/',
+                'mis_roles': '/api/usuarios/mis-roles/',
             },
             'proveedores': {
                 'listar': '/api/proveedores/',
@@ -114,6 +118,9 @@ def home(request):
                 'dashboard': '/api/admin/dashboard/',
                 'alertas': '/api/admin/dashboard/alertas/',
                 'configuracion': '/api/admin/configuracion/',
+                'solicitudes_cambio_rol': '/api/admin/solicitudes-cambio-rol/',
+                'solicitudes_pendientes': '/api/admin/solicitudes-cambio-rol/pendientes/',
+                'solicitudes_estadisticas': '/api/admin/solicitudes-cambio-rol/estadisticas/',
                 'admin_panel': '/admin/',
             },
         },
@@ -211,16 +218,16 @@ if settings.DEBUG:
     print(f'📂 MEDIA_ROOT: {settings.MEDIA_ROOT}')
     print(f'🌐 Acceso: http://192.168.1.4:8000{settings.MEDIA_URL}')
     print('\n📡 APIs REGISTRADAS:')
-    print('   ✓ Autenticación:    /api/auth/')
-    print('   ✓ Usuarios:         /api/usuarios/')
-    print('   ✓ Proveedores:      /api/proveedores/')
-    print('   ✓ Productos:        /api/productos/ y /api/categorias/')
-    print('   ✓ Pedidos:          /api/pedidos/')
-    print('   ✓ Repartidores:     /api/repartidores/')
-    print('   ✓ Pagos:            /api/pagos/')
-    print('   ✓ Rifas:            /api/rifas/')
-    print('   ✓ Notificaciones:   /api/notificaciones/')
-    print('   ✓ Chat:             /api/chat/')
-    print('   ✓ Reportes:         /api/reportes/')
-    print('   ✓ Administración:   /api/admin/')
+    print('   ✔ Autenticación:    /api/auth/')
+    print('   ✔ Usuarios:         /api/usuarios/')
+    print('   ✔ Proveedores:      /api/proveedores/')
+    print('   ✔ Productos:        /api/productos/ y /api/categorias/')
+    print('   ✔ Pedidos:          /api/pedidos/')
+    print('   ✔ Repartidores:     /api/repartidores/')
+    print('   ✔ Pagos:            /api/pagos/')
+    print('   ✔ Rifas:            /api/rifas/')
+    print('   ✔ Notificaciones:   /api/notificaciones/')
+    print('   ✔ Chat:             /api/chat/')
+    print('   ✔ Reportes:         /api/reportes/')
+    print('   ✔ Administración:   /api/admin/')
     print('='*60 + '\n')

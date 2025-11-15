@@ -367,7 +367,7 @@ if not DEBUG:
         'rest_framework.throttling.UserRateThrottle',
     ]
     REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
-        'user': '1000/hour',
+        'user': '5000/hour',
         'anon': '100/hour',
         'login': '10/minute',
         'register': '5/hour',

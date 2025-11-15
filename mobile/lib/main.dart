@@ -4,22 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-
+import 'package:provider/provider.dart';
 // Configuración base
 import './config/rutas.dart';
 import './config/api_config.dart';
-import 'services/auth_service.dart';
 import './services/servicio_notificacion.dart';
 import './services/ubicacion_service.dart';
-import './apis/subapis/http_client.dart'; // ✅ AGREGADO
+import './services/auth_service.dart';
+import './apis/subapis/http_client.dart';
+// Controllers
+import './screens/supplier/controllers/supplier_controller.dart';
 
 // ============================================
-// 📢 HANDLER PARA NOTIFICACIONES EN BACKGROUND
+// 🔔 HANDLER PARA NOTIFICACIONES EN BACKGROUND
 // ============================================
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  debugPrint('📨 Notificación recibida en background');
+  debugPrint('🔨 Notificación recibida en background');
   debugPrint('  Título: ${message.notification?.title}');
   debugPrint('  Mensaje: ${message.notification?.body}');
   debugPrint('  Data: ${message.data}');
@@ -52,32 +54,42 @@ void main() async {
   }
 
   // ============================================
-  // ✅ PASO 3: Cargar tokens en AMBOS servicios
+  // ✅ PASO 3: Cargar tokens UNA SOLA VEZ
   // ============================================
-  final authService = AuthService();
-  final apiClient = ApiClient(); // ✅ AGREGADO
+  final apiClient = ApiClient();
 
-  // Cargar en AuthService
-  await authService.loadTokens();
+  try {
+    debugPrint('🔑 Cargando tokens desde storage...');
+    await apiClient.loadTokens();
+    debugPrint('✅ Tokens cargados correctamente');
+  } catch (e) {
+    debugPrint('⚠️ Error cargando tokens: $e');
+  }
 
-  // ✅ CRÍTICO: Cargar también en ApiClient
-  await apiClient.loadTokens();
+  final hasToken = apiClient.isAuthenticated;
+  debugPrint('🔍 Usuario autenticado: $hasToken');
 
-  bool hasToken = await authService.hasStoredTokens();
-  debugPrint('🔑 Token guardado: $hasToken');
-
-  // ✅ Verificar que ApiClient también tiene el token
   if (hasToken && apiClient.accessToken != null) {
-    debugPrint('✅ Token cargado correctamente en ApiClient');
+    debugPrint('✅ Token válido en memoria');
     debugPrint('   Token: ${apiClient.accessToken!.substring(0, 20)}...');
-  } else if (hasToken && apiClient.accessToken == null) {
-    debugPrint('⚠️ ADVERTENCIA: AuthService tiene token pero ApiClient NO');
+
+    if (apiClient.tokenExpiry != null) {
+      final remaining = apiClient.tokenExpiry!.difference(DateTime.now());
+      if (remaining.isNegative) {
+        debugPrint(
+          '⚠️ Token EXPIRADO hace ${remaining.abs().inMinutes} minutos',
+        );
+      } else {
+        debugPrint('⏰ Token expira en ${remaining.inMinutes} minutos');
+      }
+    }
   }
 
   // ============================================
-  // PASO 4: Inicializar notificaciones (si hay token)
+  // ✅ PASO 4: Inicializar servicios (SOLO SI AUTENTICADO)
   // ============================================
   if (hasToken && apiClient.accessToken != null) {
+    // 4.1: Inicializar notificaciones
     try {
       debugPrint('📱 Inicializando servicio de notificaciones...');
       final notificationService = NotificationService();
@@ -86,48 +98,117 @@ void main() async {
     } catch (e) {
       debugPrint('⚠️ Error inicializando notificaciones: $e');
     }
-  }
 
-  // ============================================
-  // ✅ PASO 5: Iniciar envío de ubicación (con delay)
-  // ============================================
-  if (hasToken && apiClient.accessToken != null) {
-    try {
-      debugPrint('📍 Programando inicio de servicio de ubicación...');
+    // ✅ 4.2: SOLO INICIAR UBICACIÓN PARA REPARTIDORES
+    debugPrint('🔍 Verificando si debe iniciar servicio de ubicación...');
 
-      // ✅ Esperar 3 segundos para asegurar que todo esté listo
-      Future.delayed(const Duration(seconds: 3), () async {
+    // Verificar el rol del usuario
+    final authService = AuthService();
+    final rolUsuario = authService.getRolCacheado()?.toUpperCase();
+
+    debugPrint('👤 Rol del usuario: $rolUsuario');
+
+    if (rolUsuario == 'REPARTIDOR') {
+      debugPrint(
+        '✅ Usuario es REPARTIDOR - Iniciando servicio de ubicación...',
+      );
+
+      // DELAY AUMENTADO: 5 segundos
+      Future.delayed(const Duration(seconds: 5), () async {
         try {
-          debugPrint('🚀 Iniciando servicio de ubicación...');
+          debugPrint(
+            '╔═══════════════════════════════════════════════════════════╗',
+          );
+          debugPrint(
+            '║ 🚀 INICIANDO SERVICIO DE UBICACIÓN PARA REPARTIDOR        ║',
+          );
+          debugPrint(
+            '╚═══════════════════════════════════════════════════════════╝',
+          );
+
           final ubicacionService = UbicacionService();
+
+          // Verificar nuevamente autenticación antes de iniciar
+          if (!apiClient.isAuthenticated) {
+            debugPrint('⚠️ Token no válido, cancelando inicio de ubicación');
+            return;
+          }
 
           final exito = await ubicacionService.iniciarEnvioPeriodico(
             intervalo: const Duration(seconds: 30),
           );
 
           if (exito) {
-            debugPrint('✅ Envío de ubicación iniciado correctamente');
+            debugPrint(
+              '╔═══════════════════════════════════════════════════════════╗',
+            );
+            debugPrint(
+              '║ ✅ SERVICIO DE UBICACIÓN INICIADO CORRECTAMENTE           ║',
+            );
+            debugPrint(
+              '║    Modo: Periódico                                        ║',
+            );
+            debugPrint(
+              '║    Intervalo: 30 segundos                                 ║',
+            );
+            debugPrint(
+              '╚═══════════════════════════════════════════════════════════╝',
+            );
           } else {
-            debugPrint('❌ No se pudo iniciar el envío de ubicación');
+            debugPrint(
+              '╔═══════════════════════════════════════════════════════════╗',
+            );
+            debugPrint(
+              '║ ❌ NO SE PUDO INICIAR SERVICIO DE UBICACIÓN              ║',
+            );
+            debugPrint(
+              '║    Razón: Fallo en inicialización                         ║',
+            );
+            debugPrint(
+              '╚═══════════════════════════════════════════════════════════╝',
+            );
           }
-        } catch (e) {
-          debugPrint('❌ Error iniciando servicio de ubicación: $e');
+        } catch (e, stackTrace) {
+          debugPrint(
+            '╔═══════════════════════════════════════════════════════════╗',
+          );
+          debugPrint(
+            '║ ❌ ERROR INICIANDO SERVICIO DE UBICACIÓN                   ║',
+          );
+          debugPrint('║    Error: $e');
+          debugPrint(
+            '╚═══════════════════════════════════════════════════════════╝',
+          );
+          debugPrint('Stack trace: $stackTrace');
         }
       });
-    } catch (e) {
-      debugPrint('⚠️ Error programando servicio de ubicación: $e');
+    } else if (rolUsuario == 'PROVEEDOR') {
+      debugPrint('🏪 Usuario es PROVEEDOR - No requiere servicio de ubicación');
+    } else if (rolUsuario == 'USUARIO') {
+      debugPrint(
+        '👤 Usuario es USUARIO regular - No requiere servicio de ubicación',
+      );
+    } else if (rolUsuario == 'ADMINISTRADOR') {
+      debugPrint(
+        '👨‍💼 Usuario es ADMINISTRADOR - No requiere servicio de ubicación',
+      );
+    } else {
+      debugPrint('⚠️ Rol desconocido o no definido: $rolUsuario');
     }
   } else {
-    debugPrint('ℹ️ No se inicia servicio de ubicación (sin token válido)');
+    debugPrint('ℹ️ Usuario no autenticado - servicios no iniciados');
+    debugPrint('   Los servicios se iniciarán después del login');
   }
 
   // ============================================
-  // PASO 6: Determinar ruta inicial
+  // PASO 5: Determinar ruta inicial
   // ============================================
-  String initialRoute = (hasToken && apiClient.accessToken != null)
-      ? Rutas.router
-      : Rutas.login;
-  debugPrint('🗺️ Ruta inicial: $initialRoute');
+  String initialRoute = hasToken ? Rutas.router : Rutas.login;
+  debugPrint('═══════════════════════════════════════════════════════════');
+  debugPrint('🗺️ INICIANDO APLICACIÓN');
+  debugPrint('   Ruta inicial: $initialRoute');
+  debugPrint('   Autenticado: $hasToken');
+  debugPrint('═══════════════════════════════════════════════════════════');
 
   runApp(MyApp(initialRoute: initialRoute));
 }
@@ -139,75 +220,82 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'JP Express',
-      debugShowCheckedModeBanner: false,
-
-      // ============================================
-      // LOCALIZACIÓN EN ESPAÑOL
-      // ============================================
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
+    return MultiProvider(
+      providers: [
+        // ✅ SUPPLIER CONTROLLER - disponible globalmente
+        ChangeNotifierProvider(create: (_) => SupplierController()),
+        // Aquí puedes agregar más providers según necesites
       ],
-      supportedLocales: const [Locale('es', 'ES'), Locale('en', 'US')],
-      locale: const Locale('es', 'ES'),
+      child: MaterialApp(
+        title: 'JP Express',
+        debugShowCheckedModeBanner: false,
 
-      // ============================================
-      // TEMA GLOBAL
-      // ============================================
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4FC3F7)),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 0,
-          foregroundColor: Colors.white,
-        ),
-        cardTheme: CardThemeData(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          filled: true,
-          fillColor: Colors.white,
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
+        // ============================================
+        // LOCALIZACIÓN EN ESPAÑOL
+        // ============================================
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('es', 'ES'), Locale('en', 'US')],
+        locale: const Locale('es', 'ES'),
+
+        // ============================================
+        // TEMA GLOBAL
+        // ============================================
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4FC3F7)),
+          useMaterial3: true,
+          appBarTheme: const AppBarTheme(
+            centerTitle: true,
             elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            foregroundColor: Colors.white,
+          ),
+          cardTheme: CardThemeData(
+            elevation: 2,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-        ),
-        snackBarTheme: SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+          inputDecorationTheme: InputDecorationTheme(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            filled: true,
+            fillColor: Colors.white,
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          snackBarTheme: SnackBarThemeData(
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         ),
+
+        // ============================================
+        // RUTAS CENTRALIZADAS
+        // ============================================
+        initialRoute: initialRoute,
+        routes: Rutas.obtenerRutas(),
+
+        onUnknownRoute: (settings) {
+          return MaterialPageRoute(
+            builder: (context) => PantallaRutaNoEncontrada(
+              nombreRuta: settings.name ?? 'desconocida',
+            ),
+          );
+        },
+
+        navigatorObservers: [RouteLogger()],
       ),
-
-      // ============================================
-      // RUTAS CENTRALIZADAS
-      // ============================================
-      initialRoute: initialRoute,
-      routes: Rutas.obtenerRutas(),
-
-      onUnknownRoute: (settings) {
-        return MaterialPageRoute(
-          builder: (context) => PantallaRutaNoEncontrada(
-            nombreRuta: settings.name ?? 'desconocida',
-          ),
-        );
-      },
-
-      navigatorObservers: [RouteLogger()],
     );
   }
 }

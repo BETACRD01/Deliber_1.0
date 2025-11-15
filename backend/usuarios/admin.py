@@ -466,3 +466,126 @@ class MetodoPagoAdmin(admin.ModelAdmin):
         else:
             self.message_user(request, f'{count} método(s) con comprobante. Revisa cada uno en detalle.')
     ver_comprobantes.short_description = '🔍 Ver comprobantes de pago'
+
+# ============================================
+# SOLICITUD DE CAMBIO DE ROL ADMIN
+# ============================================
+
+from .models import SolicitudCambioRol
+import logging
+
+logger = logging.getLogger('usuarios')
+
+@admin.register(SolicitudCambioRol)
+class SolicitudCambioRolAdmin(admin.ModelAdmin):
+    list_display = [
+        'usuario_email',
+        'rol_icon',
+        'estado_badge',
+        'dias_pendiente',
+        'creado_en'
+    ]
+    
+    list_filter = ['estado', 'rol_solicitado', 'creado_en']
+    search_fields = ['user__email', 'motivo']
+    
+    readonly_fields = [
+        'user',
+        'rol_solicitado',
+        'motivo',
+        'creado_en',
+        'respondido_en',
+        'admin_responsable'
+    ]
+    
+    fieldsets = (
+        ('📋 Solicitud', {
+            'fields': (
+                'user',
+                'rol_solicitado',
+                'motivo',
+                'creado_en'
+            )
+        }),
+        ('✅/❌ Respuesta', {
+            'fields': (
+                'estado',
+                'admin_responsable',
+                'motivo_respuesta',
+                'respondido_en'
+            ),
+            'description': 'Selecciona estado para aceptar o rechazar'
+        }),
+    )
+    
+    actions = ['aceptar_solicitud', 'rechazar_solicitud']
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('user', 'admin_responsable')
+    
+    @admin.display(description='Usuario', ordering='user__email')
+    def usuario_email(self, obj):
+        return obj.user.email
+    
+    @admin.display(description='Rol')
+    def rol_icon(self, obj):
+        iconos = {'PROVEEDOR': '🏪', 'REPARTIDOR': '🚚'}
+        icono = iconos.get(obj.rol_solicitado, '👤')
+        return f"{icono} {obj.get_rol_solicitado_display()}"
+    
+    @admin.display(description='Estado')
+    def estado_badge(self, obj):
+        colores = {
+            'PENDIENTE': '#FFC107',
+            'ACEPTADA': '#28A745',
+            'RECHAZADA': '#DC3545'
+        }
+        color = colores.get(obj.estado, '#999')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 5px 10px; '
+            'border-radius: 3px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_estado_display()
+        )
+    
+    def aceptar_solicitud(self, request, queryset):
+        """Acepta solicitudes pendientes"""
+        aceptadas = 0
+        errores = 0
+        
+        for solicitud in queryset.filter(estado='PENDIENTE'):
+            try:
+                solicitud.aceptar(request.user, 'Aceptada por administrador')
+                aceptadas += 1
+                logger.info(
+                    f"✅ Admin {request.user.email} aceptó: "
+                    f"{solicitud.user.email} → {solicitud.rol_solicitado}"
+                )
+            except Exception as e:
+                logger.error(f"❌ Error aceptando: {e}")
+                errores += 1
+        
+        msg = f"✅ {aceptadas} aceptada(s)"
+        if errores > 0:
+            msg += f" | ❌ {errores} error(es)"
+        
+        self.message_user(request, msg)
+    
+    aceptar_solicitud.short_description = "✅ Aceptar solicitudes"
+    
+    def rechazar_solicitud(self, request, queryset):
+        """Rechaza solicitudes pendientes"""
+        rechazadas = 0
+        
+        for solicitud in queryset.filter(estado='PENDIENTE'):
+            solicitud.rechazar(request.user, 'Rechazada por administrador')
+            rechazadas += 1
+            logger.warning(
+                f"❌ Admin {request.user.email} rechazó: "
+                f"{solicitud.user.email} → {solicitud.rol_solicitado}"
+            )
+        
+        self.message_user(request, f"❌ {rechazadas} rechazada(s)")
+    
+    rechazar_solicitud.short_description = "❌ Rechazar solicitudes"

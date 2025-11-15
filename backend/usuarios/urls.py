@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # usuarios/urls.py
 
 from django.urls import path
@@ -40,4 +41,12 @@ urlpatterns = [
     path('metodos-pago/', views.metodos_pago, name='metodos_pago'),
     path('metodos-pago/<uuid:metodo_id>/', views.detalle_metodo_pago, name='detalle_metodo_pago'),
     path('metodos-pago/predeterminado/', views.metodo_pago_predeterminado, name='metodo_pago_predeterminado'),
+
+    # ==========================================
+    # SOLICITUDES DE CAMBIO DE ROL (USUARIO)
+    # ==========================================
+    path('solicitudes-cambio-rol/', views.mis_solicitudes_cambio_rol, name='mis-solicitudes'),
+    path('solicitudes-cambio-rol/<uuid:solicitud_id>/', views.detalle_solicitud_cambio_rol, name='detalle-solicitud'),
+    path('cambiar-rol-activo/', views.cambiar_rol_activo, name='cambiar-rol-activo'),
+    path('mis-roles/', views.mis_roles, name='mis-roles'),
 ]

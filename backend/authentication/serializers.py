@@ -1,132 +1,75 @@
+# -*- coding: utf-8 -*-
+# authentication/serializers.py
+
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import User
-from django.core.mail import send_mail
-from django.conf import settings
 from django.utils import timezone
-import secrets
-from datetime import timedelta
-from allauth.socialaccount.models import SocialAccount
-from google.oauth2 import id_token
-from google.auth.transport import requests
+from .models import User
+import logging
+
+logger = logging.getLogger('authentication')
 
 # ==========================================
-# USUARIO (Para respuestas) - CON ROLES
+# SERIALIZER DE USUARIO - RESPUESTAS
 # ==========================================
 class UserSerializer(serializers.ModelSerializer):
-    rol_display = serializers.CharField(source='get_rol_display', read_only=True)
-    es_administrador = serializers.BooleanField(read_only=True)
-    es_repartidor = serializers.BooleanField(read_only=True)
-    es_proveedor = serializers.BooleanField(read_only=True)
-    es_usuario = serializers.BooleanField(read_only=True)
+    """
+    Serializer para retornar datos básicos del usuario
+    Usado en respuestas de login, registro y perfil
+    """
     edad = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
-            'celular', 'fecha_nacimiento', 'created_at', 'edad',
-            # Rol
-            'rol', 'rol_display',
-            # Métodos de verificación de rol
-            'es_administrador', 'es_repartidor', 'es_proveedor', 'es_usuario',
-            # Campos específicos de Proveedor
-            'nombre_negocio', 'ruc', 'direccion_negocio', 'categoria_negocio', 'verificado',
-            # Campos específicos de Repartidor
-            'vehiculo', 'placa_vehiculo', 'licencia_conducir', 'disponible',
+            'celular', 'fecha_nacimiento', 'edad', 'created_at',
             # Términos
             'terminos_aceptados', 'terminos_fecha_aceptacion', 'terminos_version_aceptada',
             # Notificaciones
-            'notificaciones_email', 'notificaciones_marketing',
-            'notificaciones_pedidos', 'notificaciones_push',
+            'notificaciones_email', 'notificaciones_marketing', 'notificaciones_push',
             # Estado de cuenta
             'cuenta_desactivada', 'fecha_desactivacion',
-            # Google
-            'google_picture',
         ]
         read_only_fields = [
-            'id', 'created_at', 'rol_display', 'edad',
+            'id', 'created_at', 'edad',
             'terminos_fecha_aceptacion', 'terminos_ip_aceptacion',
-            'fecha_desactivacion', 'verificado'
+            'fecha_desactivacion',
         ]
 
     def get_edad(self, obj):
+        """Calcula la edad del usuario"""
         return obj.get_edad()
 
 
 # ==========================================
-# REGISTRO CON ROL Y AUDITORÍA DE TÉRMINOS
+# SERIALIZER DE REGISTRO
 # ==========================================
-# authentication/serializers.py - FRAGMENTO ACTUALIZADO
-# Reemplaza el RegistroSerializer completo
 
 class RegistroSerializer(serializers.ModelSerializer):
-    password2 = serializers.CharField(write_only=True, label="Repetir contraseña")
-    rol = serializers.ChoiceField(
-        choices=User.RolChoices.choices,
-        default=User.RolChoices.USUARIO,
-        help_text="Selecciona tu rol: USUARIO, REPARTIDOR, PROVEEDOR"
+    """
+    Serializer para el registro de nuevos usuarios
+    Valida todos los campos requeridos y opcionales
+    """
+    password2 = serializers.CharField(
+        write_only=True,
+        label="Repetir contraseña",
+        style={'input_type': 'password'}
     )
-
-    # ✅ CAMPOS ESPECÍFICOS PARA REPARTIDORES
-    cedula = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=10,
-        help_text="Requerido para repartidores (10 dígitos)"
+    terminos_aceptados = serializers.BooleanField(
+        help_text="Debes aceptar los términos y condiciones"
     )
-    telefono = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        help_text="Teléfono del repartidor (opcional, usa celular por defecto)"
-    )
-    tipo_vehiculo = serializers.ChoiceField(
-        choices=['motocicleta', 'bicicleta', 'automovil', 'camioneta', 'otro'],
-        required=False,
-        default='motocicleta',
-        help_text="Tipo de vehículo del repartidor"
-    )
-    placa_vehiculo = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=15,
-        help_text="Placa del vehículo (opcional)"
-    )
-    licencia_conducir = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=50,
-        help_text="Número de licencia (opcional)"
-    )
-
-    # CAMPOS OPCIONALES PARA PROVEEDORES
-    nombre_negocio = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    ruc = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    direccion_negocio = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    categoria_negocio = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-
-    # Preferencias de notificaciones (opcionales)
-    notificaciones_email = serializers.BooleanField(required=False, default=True)
-    notificaciones_marketing = serializers.BooleanField(required=False, default=True)
-    notificaciones_pedidos = serializers.BooleanField(required=False, default=True)
-    notificaciones_push = serializers.BooleanField(required=False, default=True)
 
     class Meta:
         model = User
         fields = [
             'first_name', 'last_name', 'username', 'email',
             'celular', 'fecha_nacimiento', 'password', 'password2',
-            'terminos_aceptados', 'rol',
-            # ✅ Campos de repartidor
-            'cedula', 'telefono', 'tipo_vehiculo', 'placa_vehiculo', 'licencia_conducir',
-            # Campos de proveedor
-            'nombre_negocio', 'ruc', 'direccion_negocio', 'categoria_negocio',
-            # Preferencias de notificaciones
-            'notificaciones_email', 'notificaciones_marketing',
-            'notificaciones_pedidos', 'notificaciones_push',
+            'terminos_aceptados',
+            'notificaciones_email', 'notificaciones_marketing', 'notificaciones_push',
         ]
         extra_kwargs = {
-            'password': {'write_only': True},
+            'password': {'write_only': True, 'style': {'input_type': 'password'}},
             'first_name': {'required': True},
             'last_name': {'required': True},
             'username': {'required': True},
@@ -146,34 +89,27 @@ class RegistroSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Este nombre de usuario ya está en uso")
         return value.lower()
 
-    def validate_ruc(self, value):
-        """Validar que el RUC no esté registrado"""
-        if value and User.objects.filter(ruc=value).exists():
-            raise serializers.ValidationError("Este RUC ya está registrado")
-        return value
-
-    def validate_cedula(self, value):
-        """✅ Validar formato de cédula ecuatoriana"""
-        if value:
-            if not value.isdigit():
-                raise serializers.ValidationError("La cédula debe contener solo números")
-            if len(value) != 10:
-                raise serializers.ValidationError("La cédula debe tener 10 dígitos")
-
-            # Validar que no esté registrada
-            from repartidores.models import Repartidor
-            if Repartidor.objects.filter(cedula=value).exists():
-                raise serializers.ValidationError("Esta cédula ya está registrada")
-
+    def validate_celular(self, value):
+        """Validar que el celular no esté registrado"""
+        if User.objects.filter(celular=value).exists():
+            raise serializers.ValidationError("Este número de celular ya está registrado")
         return value
 
     def validate(self, data):
-        # Validar contraseñas
+        """Validaciones combinadas"""
+        # Validar que las contraseñas coincidan
         if data['password'] != data['password2']:
-            raise serializers.ValidationError({"password2": "Las contraseñas no coinciden"})
+            raise serializers.ValidationError({
+                "password2": "Las contraseñas no coinciden"
+            })
 
         # Validar contraseña segura
-        User.validar_password(data['password'])
+        try:
+            User.validar_password(data['password'])
+        except Exception as e:
+            raise serializers.ValidationError({
+                "password": str(e)
+            })
 
         # Validar términos
         if not data.get('terminos_aceptados'):
@@ -181,57 +117,46 @@ class RegistroSerializer(serializers.ModelSerializer):
                 "terminos_aceptados": "Debes aceptar los términos y condiciones"
             })
 
-        # ✅ Validar campos específicos para REPARTIDOR
-        if data.get('rol') == User.RolChoices.REPARTIDOR:
-            if not data.get('cedula'):
-                raise serializers.ValidationError({
-                    "cedula": "La cédula es requerida para repartidores"
-                })
-
-        # Validar campos específicos para PROVEEDOR
-        if data.get('rol') == User.RolChoices.PROVEEDOR:
-            if not data.get('nombre_negocio'):
-                raise serializers.ValidationError({
-                    "nombre_negocio": "El nombre del negocio es requerido para proveedores"
-                })
-            if not data.get('ruc'):
-                raise serializers.ValidationError({
-                    "ruc": "El RUC es requerido para proveedores"
-                })
-
         return data
 
     def create(self, validated_data):
-        """
-        ⚠️ NOTA: La creación del User se hace en la vista (views.py)
-        Este método NO se usa actualmente porque la lógica está en la vista.
-        Se mantiene por compatibilidad con DRF.
-        """
+        """Crea el usuario con los datos validados"""
         validated_data.pop('password2')
 
         # Información de términos
-        if validated_data.get('terminos_aceptados'):
-            validated_data['terminos_fecha_aceptacion'] = timezone.now()
-            validated_data['terminos_version_aceptada'] = '1.0'
+        validated_data['terminos_aceptados'] = True
+        validated_data['terminos_fecha_aceptacion'] = timezone.now()
+        validated_data['terminos_version_aceptada'] = '1.0'
 
-            # Obtener IP del request
-            request = self.context.get('request')
-            if request:
-                x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-                if x_forwarded_for:
-                    ip = x_forwarded_for.split(',')[0]
-                else:
-                    ip = request.META.get('REMOTE_ADDR')
-                validated_data['terminos_ip_aceptacion'] = ip
+        # Obtener IP del request
+        request = self.context.get('request')
+        if request:
+            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+            if x_forwarded_for:
+                ip = x_forwarded_for.split(',')[0].strip()
+            else:
+                ip = request.META.get('REMOTE_ADDR')
+            validated_data['terminos_ip_aceptacion'] = ip
 
+        # Crear usuario
         user = User.objects.create_user(**validated_data)
+        logger.info(f"✅ Usuario registrado: {user.email}")
         return user
 
+
 # ==========================================
-# LOGIN CON USERNAME Y PASSWORD
+# SERIALIZER DE LOGIN
 # ==========================================
+
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField(label="Usuario o Email")
+    """
+    Serializer para login con email/username y contraseña
+    Maneja la autenticación y validación de cuenta
+    """
+    identificador = serializers.CharField(
+        label="Email o Usuario",
+        help_text="Ingresa tu email o nombre de usuario"
+    )
     password = serializers.CharField(
         write_only=True,
         style={'input_type': 'password'},
@@ -239,212 +164,57 @@ class LoginSerializer(serializers.Serializer):
     )
 
     def validate(self, data):
-        username = data.get('username')
+        """Valida credenciales y estado de cuenta"""
+        identificador = data.get('identificador', '').strip().lower()
         password = data.get('password')
 
-        if not username or not password:
-            raise serializers.ValidationError("Usuario y contraseña son requeridos")
+        if not identificador or not password:
+            raise serializers.ValidationError("Email/Usuario y contraseña son requeridos")
 
-        # Intentar obtener el usuario
-        user_obj = None
+        # Buscar usuario por email o username
+        user = None
         try:
-            # Intentar con email
-            user_obj = User.objects.get(email=username.lower())
+            if '@' in identificador:
+                user = User.objects.get(email=identificador)
+            else:
+                user = User.objects.get(username=identificador)
         except User.DoesNotExist:
-            try:
-                # Intentar con username
-                user_obj = User.objects.get(username=username.lower())
-            except User.DoesNotExist:
-                pass
+            raise serializers.ValidationError("Credenciales inválidas")
 
         # Verificar si la cuenta está bloqueada
-        if user_obj and user_obj.esta_bloqueado():
+        if user.esta_bloqueado():
+            tiempo_restante = (user.cuenta_bloqueada_hasta - timezone.now()).seconds // 60
             raise serializers.ValidationError(
-                "Tu cuenta está temporalmente bloqueada por múltiples intentos fallidos. "
-                "Intenta nuevamente en 15 minutos."
+                f"Cuenta bloqueada por múltiples intentos fallidos. Intenta en {tiempo_restante} minutos"
             )
 
-        # Intentar autenticar
-        user = None
-        if user_obj:
-            user = authenticate(username=user_obj.username, password=password)
-
-        # Si la autenticación falla, registrar intento fallido
-        if not user and user_obj:
-            user_obj.registrar_login_fallido()
-            raise serializers.ValidationError("Credenciales incorrectas")
-
-        if not user:
-            raise serializers.ValidationError("Credenciales incorrectas")
-
-        if not user.is_active:
-            raise serializers.ValidationError("Esta cuenta está desactivada")
-
+        # Verificar si la cuenta está desactivada
         if user.cuenta_desactivada:
             raise serializers.ValidationError(
-                "Tu cuenta ha sido desactivada. Contacta con soporte para más información."
+                "Esta cuenta ha sido desactivada. Contacta con soporte si necesitas reactivarla"
             )
 
-        # Registrar login exitoso con IP
-        request = self.context.get('request')
-        ip_address = None
-        if request:
-            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-            if x_forwarded_for:
-                ip_address = x_forwarded_for.split(',')[0]
-            else:
-                ip_address = request.META.get('REMOTE_ADDR')
+        # Autenticar
+        authenticated_user = authenticate(username=user.email, password=password)
 
-        user.registrar_login_exitoso(ip_address)
+        if authenticated_user is not None:
+            data['user'] = authenticated_user
+        else:
+            user.registrar_login_fallido()
+            raise serializers.ValidationError("Credenciales inválidas")
 
-        data['user'] = user
         return data
 
 
 # ==========================================
-# LOGIN CON GOOGLE
+# SERIALIZER DE CAMBIO DE CONTRASEÑA
 # ==========================================
-class GoogleLoginSerializer(serializers.Serializer):
-    access_token = serializers.CharField(
-        write_only=True,
-        help_text="Token de acceso de Google obtenido desde Flutter"
-    )
 
-    def validate_access_token(self, value):
-        """Valida el token de Google y obtiene la información del usuario"""
-        try:
-            # Verificar el token con Google
-            idinfo = id_token.verify_oauth2_token(
-                value,
-                requests.Request(),
-                settings.GOOGLE_OAUTH_CLIENT_ID
-            )
-
-            # Verificar que el token es válido
-            if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
-                raise serializers.ValidationError('Token inválido')
-
-            return idinfo
-
-        except ValueError:
-            raise serializers.ValidationError('Token de Google inválido o expirado')
-
-    def validate(self, data):
-        idinfo = data['access_token']
-
-        email = idinfo.get('email')
-        if not email:
-            raise serializers.ValidationError('No se pudo obtener el email de Google')
-
-        # Verificar si el usuario ya existe
-        try:
-            user = User.objects.get(email=email)
-
-            # Verificar estado de la cuenta
-            if not user.is_active:
-                raise serializers.ValidationError("Esta cuenta está desactivada")
-
-            if user.cuenta_desactivada:
-                raise serializers.ValidationError(
-                    "Tu cuenta ha sido desactivada. Contacta con soporte."
-                )
-
-            # Actualizar foto de perfil si cambió
-            picture_url = idinfo.get('picture')
-            if picture_url and user.google_picture != picture_url:
-                user.google_picture = picture_url
-                user.save(update_fields=['google_picture'])
-
-        except User.DoesNotExist:
-            # Crear nuevo usuario con datos de Google
-            user = User.objects.create_user(
-                email=email,
-                username=email.split('@')[0] + '_' + secrets.token_hex(4),
-                first_name=idinfo.get('given_name', ''),
-                last_name=idinfo.get('family_name', ''),
-                celular='',  # Se pedirá completar después
-                google_picture=idinfo.get('picture', ''),
-                terminos_aceptados=True,
-                terminos_fecha_aceptacion=timezone.now(),
-                terminos_version_aceptada='1.0',
-            )
-
-            # Crear SocialAccount para vincular con Google
-            SocialAccount.objects.create(
-                user=user,
-                provider='google',
-                uid=idinfo.get('sub'),
-                extra_data=idinfo
-            )
-
-        # Registrar login exitoso
-        request = self.context.get('request')
-        ip_address = None
-        if request:
-            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-            if x_forwarded_for:
-                ip_address = x_forwarded_for.split(',')[0]
-            else:
-                ip_address = request.META.get('REMOTE_ADDR')
-
-        user.registrar_login_exitoso(ip_address)
-
-        data['user'] = user
-        return data
-
-
-# ==========================================
-# ACTUALIZAR PERFIL
-# ==========================================
-class ActualizarPerfilSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = [
-            'first_name', 'last_name', 'celular', 'fecha_nacimiento',
-            # Campos de proveedor (solo si es proveedor)
-            'nombre_negocio', 'direccion_negocio', 'categoria_negocio',
-            # Campos de repartidor (solo si es repartidor)
-            'vehiculo', 'placa_vehiculo', 'licencia_conducir', 'disponible',
-        ]
-
-    def validate(self, data):
-        user = self.context['request'].user
-
-        # Validar campos específicos según rol
-        if user.es_proveedor():
-            if 'nombre_negocio' in data and not data['nombre_negocio']:
-                raise serializers.ValidationError({
-                    'nombre_negocio': 'El nombre del negocio no puede estar vacío'
-                })
-
-        if user.es_repartidor():
-            if 'vehiculo' in data and not data['vehiculo']:
-                raise serializers.ValidationError({
-                    'vehiculo': 'El vehículo no puede estar vacío'
-                })
-
-        return data
-
-    def update(self, instance, validated_data):
-        # Solo permitir actualizar ciertos campos según el rol
-        if not instance.es_proveedor():
-            validated_data.pop('nombre_negocio', None)
-            validated_data.pop('direccion_negocio', None)
-            validated_data.pop('categoria_negocio', None)
-
-        if not instance.es_repartidor():
-            validated_data.pop('vehiculo', None)
-            validated_data.pop('placa_vehiculo', None)
-            validated_data.pop('licencia_conducir', None)
-            validated_data.pop('disponible', None)
-
-        return super().update(instance, validated_data)
-
-
-# ==========================================
-# CAMBIAR CONTRASEÑA (ESTANDO AUTENTICADO)
-# ==========================================
 class CambiarPasswordSerializer(serializers.Serializer):
+    """
+    Serializer para cambiar contraseña (usuario autenticado)
+    Requiere contraseña actual y validación de la nueva
+    """
     password_actual = serializers.CharField(
         write_only=True,
         required=True,
@@ -465,54 +235,185 @@ class CambiarPasswordSerializer(serializers.Serializer):
     )
 
     def validate_password_actual(self, value):
+        """Verificar que la contraseña actual sea correcta"""
         user = self.context['request'].user
         if not user.check_password(value):
             raise serializers.ValidationError("Contraseña actual incorrecta")
         return value
 
     def validate(self, data):
-        # Validar que las contraseñas nuevas coincidan
+        """Validaciones combinadas"""
+        # Validar que las nuevas contraseñas coincidan
         if data['password_nueva'] != data['password_nueva2']:
             raise serializers.ValidationError({
                 "password_nueva2": "Las contraseñas no coinciden"
             })
 
-        # Validar que la nueva contraseña sea diferente
+        # Validar que sea diferente a la actual
         if data['password_actual'] == data['password_nueva']:
             raise serializers.ValidationError({
                 "password_nueva": "La nueva contraseña debe ser diferente a la actual"
             })
 
-        # Validar contraseña segura
-        User.validar_password(data['password_nueva'])
+        # Validar que sea segura
+        try:
+            User.validar_password(data['password_nueva'])
+        except Exception as e:
+            raise serializers.ValidationError({
+                "password_nueva": str(e)
+            })
 
         return data
 
     def save(self):
+        """Guarda la nueva contraseña"""
         user = self.context['request'].user
         user.set_password(self.validated_data['password_nueva'])
         user.save()
+        logger.info(f"✅ Contraseña cambiada: {user.email}")
         return user
 
 
 # ==========================================
-# ACTUALIZAR PREFERENCIAS DE NOTIFICACIONES
+# SERIALIZER DE RECUPERACIÓN DE CONTRASEÑA
 # ==========================================
+
+class SolicitarCodigoRecuperacionSerializer(serializers.Serializer):
+    """
+    Serializer para solicitar código de recuperación de contraseña
+    Genera un código de 6 dígitos hasheado
+    """
+    email = serializers.EmailField(label="Correo electrónico")
+
+    def validate_email(self, value):
+        """Validar que el email exista"""
+        email_lower = value.lower()
+        try:
+            user = User.objects.get(email=email_lower)
+            if user.cuenta_desactivada:
+                raise serializers.ValidationError(
+                    "Esta cuenta está desactivada. Contacta con soporte."
+                )
+            if not user.notificaciones_email:
+                raise serializers.ValidationError(
+                    "No podemos enviarte un correo porque has desactivado las notificaciones por email"
+                )
+        except User.DoesNotExist:
+            # Por seguridad, no revelamos si el email existe
+            pass
+
+        return email_lower
+
+
+class VerificarCodigoRecuperacionSerializer(serializers.Serializer):
+    """
+    Serializer para verificar código de 6 dígitos
+    Valida el código hasheado almacenado
+    """
+    email = serializers.EmailField(label="Correo electrónico")
+    codigo = serializers.CharField(
+        max_length=6,
+        min_length=6,
+        label="Código de 6 dígitos"
+    )
+
+    def validate_codigo(self, value):
+        """Validar que sea 6 dígitos"""
+        if not value.isdigit():
+            raise serializers.ValidationError("El código debe contener solo números")
+        return value
+
+
+class ResetPasswordConCodigoSerializer(serializers.Serializer):
+    """
+    Serializer para resetear contraseña con código de 6 dígitos
+    Verifica el código y establece nueva contraseña
+    """
+    email = serializers.EmailField(label="Correo electrónico")
+    codigo = serializers.CharField(
+        max_length=6,
+        min_length=6,
+        label="Código de 6 dígitos"
+    )
+    password = serializers.CharField(
+        write_only=True,
+        style={'input_type': 'password'},
+        label="Nueva contraseña"
+    )
+    password2 = serializers.CharField(
+        write_only=True,
+        style={'input_type': 'password'},
+        label="Confirmar contraseña"
+    )
+
+    def validate_codigo(self, value):
+        """Validar que sea 6 dígitos"""
+        if not value.isdigit():
+            raise serializers.ValidationError("El código debe contener solo números")
+        return value
+
+    def validate(self, data):
+        """Validaciones combinadas"""
+        # Validar que las contraseñas coincidan
+        if data['password'] != data['password2']:
+            raise serializers.ValidationError({
+                "password2": "Las contraseñas no coinciden"
+            })
+
+        # Validar que sea segura
+        try:
+            User.validar_password(data['password'])
+        except Exception as e:
+            raise serializers.ValidationError({
+                "password": str(e)
+            })
+
+        return data
+
+
+# ==========================================
+# SERIALIZER DE ACTUALIZAR PERFIL
+# ==========================================
+
+class ActualizarPerfilSerializer(serializers.ModelSerializer):
+    """
+    Serializer para actualizar información básica del perfil
+    Permite cambiar datos personales y preferencias
+    """
+    class Meta:
+        model = User
+        fields = [
+            'first_name', 'last_name', 'celular', 'fecha_nacimiento',
+            'notificaciones_email', 'notificaciones_marketing', 'notificaciones_push',
+        ]
+
+
+# ==========================================
+# SERIALIZER DE PREFERENCIAS DE NOTIFICACIONES
+# ==========================================
+
 class PreferenciasNotificacionesSerializer(serializers.ModelSerializer):
+    """
+    Serializer para gestionar preferencias de notificaciones
+    """
     class Meta:
         model = User
         fields = [
             'notificaciones_email',
             'notificaciones_marketing',
-            'notificaciones_pedidos',
             'notificaciones_push',
         ]
 
 
 # ==========================================
-# DESACTIVAR CUENTA
+# SERIALIZER DE DESACTIVACIÓN DE CUENTA
 # ==========================================
+
 class DesactivarCuentaSerializer(serializers.Serializer):
+    """
+    Serializer para desactivar la cuenta del usuario
+    Requiere confirmación con contraseña
+    """
     password = serializers.CharField(
         write_only=True,
         required=True,
@@ -526,120 +427,16 @@ class DesactivarCuentaSerializer(serializers.Serializer):
     )
 
     def validate_password(self, value):
+        """Verificar que la contraseña sea correcta"""
         user = self.context['request'].user
         if not user.check_password(value):
             raise serializers.ValidationError("Contraseña incorrecta")
         return value
 
     def save(self):
+        """Desactiva la cuenta"""
         user = self.context['request'].user
         razon = self.validated_data.get('razon', '')
         user.desactivar_cuenta(razon=razon)
-        return user
-
-
-# ==========================================
-# RECUPERACIÓN DE CONTRASEÑA
-# ==========================================
-class SolicitarResetPasswordSerializer(serializers.Serializer):
-    email = serializers.EmailField(label="Correo electrónico")
-
-    def validate_email(self, value):
-        try:
-            user = User.objects.get(email=value.lower())
-            if user.cuenta_desactivada:
-                raise serializers.ValidationError(
-                    "Esta cuenta está desactivada. No se puede recuperar la contraseña."
-                )
-        except User.DoesNotExist:
-            raise serializers.ValidationError("No existe una cuenta con este correo electrónico")
-        return value.lower()
-
-    def save(self):
-        email = self.validated_data['email']
-        user = User.objects.get(email=email)
-
-        # Verificar si puede recibir emails
-        if not user.notificaciones_email:
-            raise serializers.ValidationError(
-                "No podemos enviarte un correo porque has desactivado las notificaciones por email"
-            )
-
-        # Generar token único
-        token = secrets.token_urlsafe(32)
-        user.reset_password_token = token
-        user.reset_password_expire = timezone.now() + timedelta(hours=1)
-        user.save()
-
-        # Construir URL desde settings
-        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-        reset_url = f"{frontend_url}/reset-password/{token}/"
-
-        # Enviar email
-        send_mail(
-            subject='Recuperación de contraseña - JP Express',
-            message=f'''
-Hola {user.get_full_name()},
-
-Recibimos una solicitud para restablecer tu contraseña.
-
-Haz clic en el siguiente enlace para crear una nueva contraseña:
-{reset_url}
-
-Este enlace expira en 1 hora.
-
-Si no solicitaste este cambio, ignora este correo.
-
-Saludos,
-Equipo JP Express
-            ''',
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
-
-        return user
-
-
-class ResetPasswordSerializer(serializers.Serializer):
-    token = serializers.CharField()
-    password = serializers.CharField(
-        write_only=True,
-        style={'input_type': 'password'},
-        label="Nueva contraseña"
-    )
-    password2 = serializers.CharField(
-        write_only=True,
-        style={'input_type': 'password'},
-        label="Confirmar contraseña"
-    )
-
-    def validate(self, data):
-        # Validar que las contraseñas coincidan
-        if data['password'] != data['password2']:
-            raise serializers.ValidationError({"password2": "Las contraseñas no coinciden"})
-
-        # Validar contraseña segura
-        User.validar_password(data['password'])
-
-        # Validar token
-        try:
-            user = User.objects.get(reset_password_token=data['token'])
-
-            # Verificar que no haya expirado (usando timezone.now())
-            if user.reset_password_expire < timezone.now():
-                raise serializers.ValidationError({"token": "El token ha expirado"})
-
-            data['user'] = user
-        except User.DoesNotExist:
-            raise serializers.ValidationError({"token": "Token inválido"})
-
-        return data
-
-    def save(self):
-        user = self.validated_data['user']
-        user.set_password(self.validated_data['password'])
-        user.reset_password_token = None
-        user.reset_password_expire = None
-        user.save()
+        logger.info(f"✅ Cuenta desactivada: {user.email}")
         return user

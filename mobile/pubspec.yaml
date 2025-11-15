@@ -54,6 +54,7 @@ dependencies:
   cached_network_image: ^3.4.1
   geocoding: ^4.0.0
   google_maps_flutter: ^2.13.1
+  intl: ^0.20.2
 
 # ============================================
 # DEPENDENCIAS DE DESARROLLO

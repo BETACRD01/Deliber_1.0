@@ -7,7 +7,7 @@ import '../apis/helpers/api_exception.dart';
 import 'dart:developer' as developer;
 
 /// Servicio de Autenticación - SOLO lógica de autenticación
-/// ✅ CON PERSISTENCIA DE ROL DE USUARIO Y TOKEN LIFETIME
+/// ✅ CORREGIDO: Ahora extrae correctamente rol y userId de response['tokens']
 class AuthService {
   // ============================================
   // SINGLETON
@@ -34,9 +34,8 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ REGISTRO (CON TOKEN LIFETIME)
+  // ✅ REGISTRO (CORREGIDO)
   // ============================================
-
   Future<Map<String, dynamic>> register(Map<String, dynamic> data) async {
     _log('🔐 Iniciando registro para: ${data['email']}');
 
@@ -51,23 +50,35 @@ class AuthService {
       if (response.containsKey('tokens')) {
         final tokens = response['tokens'];
 
-        // ✅ Extraer rol y userId del response
-        final String? rol = response['rol'] as String?;
-        final int? userId =
+        // ✅ CORREGIDO: Extraer rol y userId de tokens, no del response principal
+        final String? rol = tokens['rol'] as String?;
+        final int? userId = tokens['user_id'] as int?;
+
+        // Si no viene en tokens, intentar buscar en response (compatibilidad)
+        final String? rolFallback = response['rol'] as String?;
+        final int? userIdFallback =
             (response['user_id'] ?? response['id'] ?? response['usuario_id'])
                 as int?;
+
+        final String? rolFinal = rol ?? rolFallback;
+        final int? userIdFinal = userId ?? userIdFallback;
 
         // ✅ Guardar tokens con rol, userId y tokenLifetime
         await _client.saveTokens(
           tokens['access'],
           tokens['refresh'],
-          role: rol,
-          userId: userId,
-          tokenLifetime: const Duration(hours: 12), // ✅ Duración del token
+          role: rolFinal,
+          userId: userIdFinal,
+          tokenLifetime: const Duration(hours: 12),
         );
+
         _log('✅ Registro exitoso');
-        _log('👤 Rol: $rol');
-        _log('🆔 User ID: $userId');
+        _log('👤 Rol: $rolFinal');
+        _log('🆔 User ID: $userIdFinal');
+
+        if (rolFinal == null) {
+          _log('⚠️ ADVERTENCIA: No se recibió rol del backend');
+        }
       }
       return response;
     } on ApiException {
@@ -84,9 +95,8 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ LOGIN (CON TOKEN LIFETIME)
+  // ✅ LOGIN (CORREGIDO)
   // ============================================
-
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
@@ -101,31 +111,53 @@ class AuthService {
     if (response.containsKey('tokens')) {
       final tokens = response['tokens'];
 
-      // ✅ Extraer rol y userId del response
-      final String? rol = response['rol'] as String?;
-      final int? userId = response['user_id'] as int?;
+      // ✅ CORREGIDO: Buscar rol y userId dentro de tokens
+      final String? rol = tokens['rol'] as String?;
+      final int? userId = tokens['user_id'] as int?;
+
+      // Si no viene en tokens, intentar desde response (compatibilidad)
+      final String? rolFallback = response['rol'] as String?;
+      final int? userIdFallback = response['user_id'] as int?;
+
+      // Intentar también desde response['usuario'] si existe
+      final String? rolFinal;
+      final int? userIdFinal;
+
+      if (response.containsKey('usuario') && response['usuario'] is Map) {
+        final usuario = response['usuario'] as Map<String, dynamic>;
+        rolFinal = rol ?? rolFallback ?? usuario['rol'] as String?;
+        userIdFinal = userId ?? userIdFallback ?? usuario['id'] as int?;
+      } else {
+        rolFinal = rol ?? rolFallback;
+        userIdFinal = userId ?? userIdFallback;
+      }
 
       // ✅ Guardar tokens CON rol, userId y tokenLifetime
       await _client.saveTokens(
         tokens['access'],
         tokens['refresh'],
-        role: rol,
-        userId: userId,
-        tokenLifetime: const Duration(hours: 12), // ✅ Duración del token
+        role: rolFinal,
+        userId: userIdFinal,
+        tokenLifetime: const Duration(hours: 12),
       );
 
       _log('✅ Login exitoso');
-      _log('👤 Rol: $rol');
-      _log('🆔 User ID: $userId');
+      _log('👤 Rol guardado: $rolFinal');
+      _log('🆔 User ID guardado: $userIdFinal');
+
+      if (rolFinal == null) {
+        _log('⚠️ ADVERTENCIA: No se pudo determinar el rol del usuario');
+        _log('   Tokens: ${tokens.keys.join(", ")}');
+        _log('   Response keys: ${response.keys.join(", ")}');
+      }
     }
 
     return response;
   }
 
   // ============================================
-  // ✅ LOGIN CON GOOGLE (CON TOKEN LIFETIME)
+  // ✅ LOGIN CON GOOGLE (CORREGIDO)
   // ============================================
-
   Future<Map<String, dynamic>> loginWithGoogle({
     required String accessToken,
   }) async {
@@ -138,22 +170,28 @@ class AuthService {
     if (response.containsKey('tokens')) {
       final tokens = response['tokens'];
 
-      // ✅ Extraer rol y userId del response
-      final String? rol = response['rol'] as String?;
-      final int? userId = response['user_id'] as int?;
+      // ✅ CORREGIDO: Buscar en tokens primero
+      final String? rol = tokens['rol'] as String?;
+      final int? userId = tokens['user_id'] as int?;
 
-      // ✅ Guardar tokens CON rol, userId y tokenLifetime
+      // Fallback a response si no está en tokens
+      final String? rolFallback = response['rol'] as String?;
+      final int? userIdFallback = response['user_id'] as int?;
+
+      final String? rolFinal = rol ?? rolFallback;
+      final int? userIdFinal = userId ?? userIdFallback;
+
       await _client.saveTokens(
         tokens['access'],
         tokens['refresh'],
-        role: rol,
-        userId: userId,
-        tokenLifetime: const Duration(hours: 12), // ✅ Duración del token
+        role: rolFinal,
+        userId: userIdFinal,
+        tokenLifetime: const Duration(hours: 12),
       );
 
       _log('✅ Login con Google exitoso');
-      _log('👤 Rol: $rol');
-      _log('🆔 User ID: $userId');
+      _log('👤 Rol: $rolFinal');
+      _log('🆔 User ID: $userIdFinal');
     }
 
     return response;
@@ -162,7 +200,6 @@ class AuthService {
   // ============================================
   // LOGOUT
   // ============================================
-
   Future<void> logout() async {
     try {
       _log('👋 Cerrando sesión...');
@@ -173,7 +210,7 @@ class AuthService {
       }
       _log('✅ Logout exitoso');
     } catch (e) {
-      _log('⚠️ Error en logout del servidor');
+      _log('⚠️ Error en logout del servidor: $e');
     } finally {
       await _client.clearTokens();
     }
@@ -182,7 +219,6 @@ class AuthService {
   // ============================================
   // PERFIL
   // ============================================
-
   Future<Map<String, dynamic>> getPerfil() async {
     return await _client.get(ApiConfig.perfil);
   }
@@ -209,7 +245,6 @@ class AuthService {
   // ============================================
   // GESTIÓN DE CONTRASEÑA
   // ============================================
-
   Future<Map<String, dynamic>> cambiarPassword({
     required String passwordActual,
     required String passwordNueva,
@@ -287,7 +322,6 @@ class AuthService {
   // ============================================
   // PREFERENCIAS Y CUENTA
   // ============================================
-
   Future<Map<String, dynamic>> actualizarPreferencias(
     Map<String, dynamic> preferencias,
   ) async {
@@ -310,61 +344,92 @@ class AuthService {
 
   /// Obtiene el rol cacheado del usuario sin hacer petición al servidor
   String? getRolCacheado() {
-    return _client.userRole;
+    final rol = _client.userRole;
+    if (rol == null) {
+      _log('⚠️ No hay rol cacheado');
+    } else {
+      _log('👤 Rol cacheado: $rol');
+    }
+    return rol;
   }
 
   /// Obtiene el ID del usuario cacheado
   int? getUserIdCacheado() {
-    return _client.userId;
+    final userId = _client.userId;
+    if (userId == null) {
+      _log('⚠️ No hay userId cacheado');
+    } else {
+      _log('🆔 UserId cacheado: $userId');
+    }
+    return userId;
   }
 
   /// Verifica si el usuario actual es repartidor
   bool esRepartidor() {
     final rol = _client.userRole?.toUpperCase();
-    return rol == ApiConfig.rolRepartidor;
+    final esRep = rol == ApiConfig.rolRepartidor;
+    _log('🚚 ¿Es repartidor? $esRep (rol: $rol)');
+    return esRep;
   }
 
   /// Verifica si el usuario actual es un usuario normal
   bool esUsuario() {
     final rol = _client.userRole?.toUpperCase();
-    return rol == ApiConfig.rolUsuario;
+    final esUs = rol == ApiConfig.rolUsuario;
+    _log('👤 ¿Es usuario? $esUs (rol: $rol)');
+    return esUs;
   }
 
   /// Verifica si el usuario actual es proveedor
   bool esProveedor() {
     final rol = _client.userRole?.toUpperCase();
-    return rol == ApiConfig.rolProveedor;
+    final esProv = rol == ApiConfig.rolProveedor;
+    _log('🏪 ¿Es proveedor? $esProv (rol: $rol)');
+    return esProv;
   }
 
   /// Verifica si el usuario actual es administrador
   bool esAdministrador() {
     final rol = _client.userRole?.toUpperCase();
-    return rol == ApiConfig.rolAdministrador;
+    final esAdmin = rol == ApiConfig.rolAdministrador;
+    _log('👨‍💼 ¿Es administrador? $esAdmin (rol: $rol)');
+    return esAdmin;
   }
 
   /// Verifica si el rol cacheado coincide con el esperado
   bool tieneRol(String rolEsperado) {
     final rol = _client.userRole?.toUpperCase();
-    return rol == rolEsperado.toUpperCase();
+    final coincide = rol == rolEsperado.toUpperCase();
+    _log('🎭 ¿Tiene rol $rolEsperado? $coincide (rol actual: $rol)');
+    return coincide;
   }
 
   /// Imprime información de debug del estado actual
   void imprimirEstadoAuth() {
-    _log('╔═══════════════════════════════════════════════════════════╗');
+    _log('╔════════════════════════════════════════════════════════════╗');
     _log('📊 ESTADO DE AUTENTICACIÓN');
-    _log('╠═══════════════════════════════════════════════════════════╣');
+    _log('╟────────────────────────────────────────────────────────────╣');
     _log('🔓 Autenticado: ${_client.isAuthenticated}');
     _log('👤 Rol cacheado: ${_client.userRole ?? "null"}');
     _log('🆔 User ID: ${_client.userId ?? "null"}');
     _log('🔑 Token presente: ${_client.accessToken != null}');
     _log('🔄 Refresh token presente: ${_client.refreshToken != null}');
-    _log('╚═══════════════════════════════════════════════════════════╝');
+
+    if (_client.tokenExpiry != null) {
+      final remaining = _client.tokenExpiry!.difference(DateTime.now());
+      if (remaining.isNegative) {
+        _log('⏰ Token EXPIRADO hace ${remaining.abs().inMinutes} minutos');
+      } else {
+        _log('⏰ Token expira en ${remaining.inMinutes} minutos');
+      }
+    }
+
+    _log('╚════════════════════════════════════════════════════════════╝');
   }
 
   // ============================================
   // HELPERS PRIVADOS PARA REGISTRO
   // ============================================
-
   void _normalizarDatosRegistro(Map<String, dynamic> data) {
     if (data.containsKey('email')) {
       data['email'] = data['email'].toString().trim().toLowerCase();
@@ -472,7 +537,6 @@ class AuthService {
   // ============================================
   // MÉTODOS ESTÁTICOS DE UTILIDAD
   // ============================================
-
   static String formatearTiempoEspera(int segundos) {
     final duracion = Duration(seconds: segundos);
     final minutos = duracion.inMinutes;
@@ -488,13 +552,19 @@ class AuthService {
   // ============================================
   // MÉTODOS PÚBLICOS DE UTILIDAD
   // ============================================
-
   Future<bool> hasStoredTokens() async {
     return await _client.hasStoredTokens();
   }
 
   Future<void> loadTokens() async {
     await _client.loadTokens();
+
+    // Después de cargar, verificar el estado
+    if (_client.userRole == null) {
+      _log('⚠️ ADVERTENCIA: Tokens cargados pero sin rol');
+    } else {
+      _log('✅ Tokens cargados con rol: ${_client.userRole}');
+    }
   }
 
   bool get isAuthenticated => _client.isAuthenticated;

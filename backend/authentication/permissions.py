@@ -1,7 +1,11 @@
+# -*- coding: utf-8 -*-
+# authentication/permissions.py
+
 from rest_framework import permissions
 
+
 # ==========================================
-# PERMISOS INDIVIDUALES POR ROL
+# PERMISOS BÁSICOS
 # ==========================================
 
 class EsAdministrador(permissions.BasePermission):
@@ -11,100 +15,39 @@ class EsAdministrador(permissions.BasePermission):
     message = 'Solo los administradores pueden realizar esta acción'
     
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.es_administrador()
+        return (
+            request.user and 
+            request.user.is_authenticated and 
+            request.user.is_staff
+        )
 
 
-class EsRepartidor(permissions.BasePermission):
+class CuentaActiva(permissions.BasePermission):
     """
-    Permiso personalizado para verificar si es repartidor
+    Verifica que la cuenta del usuario esté activa y no desactivada
     """
-    message = 'Solo los repartidores pueden realizar esta acción'
+    message = 'Tu cuenta está desactivada. Contacta con soporte.'
     
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.es_repartidor()
+        return (
+            request.user and 
+            request.user.is_authenticated and 
+            request.user.is_active and
+            not request.user.cuenta_desactivada
+        )
 
 
-class EsProveedor(permissions.BasePermission):
+class NoEstasBloqueado(permissions.BasePermission):
     """
-    Permiso personalizado para verificar si es proveedor
+    Verifica que la cuenta no esté temporalmente bloqueada
     """
-    message = 'Solo los proveedores pueden realizar esta acción'
+    message = 'Tu cuenta está temporalmente bloqueada. Intenta más tarde.'
     
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.es_proveedor()
-
-
-class EsUsuario(permissions.BasePermission):
-    """
-    Permiso personalizado para verificar si es usuario regular
-    """
-    message = 'Solo los usuarios regulares pueden realizar esta acción'
-    
-    def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.es_usuario()
-
-
-class EsProveedorVerificado(permissions.BasePermission):
-    """
-    Permiso para verificar que el proveedor esté verificado
-    """
-    message = 'Tu cuenta de proveedor debe estar verificada para realizar esta acción'
-    
-    def has_permission(self, request, view):
-        return (request.user and 
-                request.user.is_authenticated and 
-                request.user.es_proveedor() and 
-                request.user.verificado)
-
-
-class PuedeCrearRifas(permissions.BasePermission):
-    """
-    Solo administradores pueden crear rifas
-    """
-    message = 'Solo los administradores pueden crear rifas'
-    
-    def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.puede_crear_rifas()
-
-
-# ==========================================
-# PERMISOS COMBINADOS
-# ==========================================
-
-class EsAdministradorORepartidor(permissions.BasePermission):
-    """
-    Permite acceso a administradores o repartidores
-    """
-    message = 'Solo los administradores o repartidores pueden realizar esta acción'
-    
-    def has_permission(self, request, view):
-        return (request.user and 
-                request.user.is_authenticated and 
-                (request.user.es_administrador() or request.user.es_repartidor()))
-
-
-class EsAdministradorOProveedor(permissions.BasePermission):
-    """
-    Permite acceso a administradores o proveedores
-    """
-    message = 'Solo los administradores o proveedores pueden realizar esta acción'
-    
-    def has_permission(self, request, view):
-        return (request.user and 
-                request.user.is_authenticated and 
-                (request.user.es_administrador() or request.user.es_proveedor()))
-
-
-class NoEsUsuarioRegular(permissions.BasePermission):
-    """
-    Permite acceso a todos menos usuarios regulares (admin, proveedor, repartidor)
-    """
-    message = 'Esta acción no está disponible para usuarios regulares'
-    
-    def has_permission(self, request, view):
-        return (request.user and 
-                request.user.is_authenticated and 
-                not request.user.es_usuario())
+        if not request.user or not request.user.is_authenticated:
+            return True
+        
+        return not request.user.esta_bloqueado()
 
 
 # ==========================================
@@ -119,14 +62,8 @@ class EsPropietarioOAdministrador(permissions.BasePermission):
     
     def has_object_permission(self, request, view, obj):
         # Los administradores pueden todo
-        if request.user.es_administrador():
+        if request.user.is_staff:
             return True
-        
-        # Verificar si el objeto tiene un campo 'user' o 'usuario'
-        if hasattr(obj, 'user'):
-            return obj.user == request.user
-        elif hasattr(obj, 'usuario'):
-            return obj.usuario == request.user
         
         # Si el objeto es el mismo usuario
         if obj == request.user:
@@ -147,28 +84,34 @@ class SoloLecturaSiNoEsPropietario(permissions.BasePermission):
             return True
         
         # Los administradores pueden modificar todo
-        if request.user.es_administrador():
+        if request.user.is_staff:
             return True
         
-        # Verificar propiedad del objeto
-        if hasattr(obj, 'user'):
-            return obj.user == request.user
-        elif hasattr(obj, 'usuario'):
-            return obj.usuario == request.user
-        elif obj == request.user:
+        # Si el objeto es el mismo usuario
+        if obj == request.user:
             return True
         
         return False
 
 
-class CuentaActiva(permissions.BasePermission):
+# ==========================================
+# COMBINACIONES DE PERMISOS
+# ==========================================
+
+class PuedeModificarPropioUsuario(permissions.BasePermission):
     """
-    Verifica que la cuenta del usuario esté activa y no desactivada
+    Permite que un usuario solo modifique sus propios datos
     """
-    message = 'Tu cuenta está desactivada. Contacta con soporte.'
+    message = 'Solo puedes modificar tu propia información'
     
-    def has_permission(self, request, view):
-        return (request.user and 
-                request.user.is_authenticated and 
-                request.user.is_active and
-                not request.user.cuenta_desactivada)
+    def has_object_permission(self, request, view, obj):
+        # Métodos seguros para todos
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        
+        # Admin puede modificar todo
+        if request.user.is_staff:
+            return True
+        
+        # Cada usuario solo su propia información
+        return obj == request.user

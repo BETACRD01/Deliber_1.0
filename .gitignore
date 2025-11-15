@@ -278,3 +278,15 @@ backend/*-firebase-adminsdk-*.json
 # ==========================================
 !mobile/lib/
 !mobile/lib/**
+# ==========================================
+# FRONTEND REACT/NODE
+# ==========================================
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env.local
+frontend/.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/

@@ -22,7 +22,7 @@
         <!-- ✅ AGREGAR ESTO: API Key de Google Maps -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBrODjQ7xz5O0BHm-dHuDfjH9GwTGCwzS4"/>
+            android:value="AIzaSyAVomIe-K4kpGMrQTc-bZaNcBvJtkK-KBA"/>
 
         <!-- Firebase Cloud Messaging -->
         <service
