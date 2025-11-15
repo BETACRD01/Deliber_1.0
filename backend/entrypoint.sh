@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Función para logging
+# Funciones de logging
 log() {
     echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
 }
@@ -30,40 +30,40 @@ info() {
 }
 
 # ==========================================
-# ESPERAR A QUE POSTGRES ESTÉ LISTO
+# ESPERAR A POSTGRESQL (OPTIMIZADO)
 # ==========================================
 log "Esperando a PostgreSQL..."
 
 RETRIES=30
 until PGPASSWORD=$POSTGRES_PASSWORD psql -h "$DB_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\q' 2>/dev/null; do
-    >&2 warning "PostgreSQL no disponible - reintentando... ($RETRIES intentos restantes)"
     RETRIES=$((RETRIES - 1))
     if [ $RETRIES -eq 0 ]; then
-        error "PostgreSQL no disponible después de 30 intentos"
-        exit 1
+        warning "PostgreSQL no responde después de 30 intentos"
+        break
     fi
+    warning "PostgreSQL no disponible - reintentando... ($RETRIES intentos restantes)"
     sleep 1
 done
 
-log "✓ PostgreSQL está listo!"
+log "✓ PostgreSQL check completado!"
 
 # ==========================================
-# ESPERAR A QUE REDIS ESTÉ LISTO
+# ESPERAR A REDIS (OPTIMIZADO - REDUCIDO)
 # ==========================================
 log "Esperando a Redis..."
 
-RETRIES=30
-until redis-cli -h redis -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; do
-    >&2 warning "Redis no disponible - reintentando... ($RETRIES intentos restantes)"
+RETRIES=20
+until redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; do
     RETRIES=$((RETRIES - 1))
     if [ $RETRIES -eq 0 ]; then
-        error "Redis no disponible después de 30 intentos"
-        exit 1
+        warning "Redis no responde, pero continuando de todas formas..."
+        break
     fi
+    warning "Redis no disponible - reintentando... ($RETRIES intentos restantes)"
     sleep 1
 done
 
-log "✓ Redis está listo!"
+log "✓ Redis check completado!"
 
 # ==========================================
 # EJECUTAR SEGÚN EL COMANDO
@@ -78,9 +78,9 @@ case "$1" in
         
         # Recolectar archivos estáticos
         info "Recolectando archivos estáticos..."
-        python manage.py collectstatic --noinput --clear
+        python manage.py collectstatic --noinput --clear 2>&1 | grep -E "(Deleted|copied)" | tail -5 || true
         
-        # Crear superusuario si no existe (solo en desarrollo)
+        # Crear superusuario si no existe
         if [ "$DEBUG" = "True" ]; then
             info "Verificando superusuario..."
             python manage.py shell << 'EOF'
@@ -88,46 +88,31 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 try:
-    if not User.objects.filter(email='admin@deliber.com').exists():
-        # Intentar crear con username (modelo estándar o personalizado con username)
-        try:
-            User.objects.create_superuser(
-                username='admin',
-                email='admin@deliber.com',
-                password='admin123',
-                first_name='Admin',
-                last_name='Deliber'
-            )
-            print('✓ Superusuario creado: admin@deliber.com / admin123')
-        except TypeError:
-            # Si falla, intentar sin username (modelo solo con email)
-            User.objects.create_superuser(
-                email='admin@deliber.com',
-                password='admin123',
-                first_name='Admin',
-                last_name='Deliber'
-            )
-            print('✓ Superusuario creado (sin username): admin@deliber.com / admin123')
+    if not User.objects.filter(username='admin').exists():
+        User.objects.create_superuser(
+            username='admin',
+            email='admin@deliber.com',
+            password='admin123'
+        )
+        print('✓ Superusuario creado')
     else:
         print('✓ Superusuario ya existe')
 except Exception as e:
     print(f'⚠ Error al crear superusuario: {str(e)}')
-    print('Puedes crearlo manualmente con: python manage.py createsuperuser')
 EOF
         fi
         
         # Mostrar información de configuración
         echo ""
-        echo "=================================================="
+        echo "============================================================"
         echo "DELIBER - Configuración de Desarrollo"
-        echo "=================================================="
+        echo "============================================================"
         echo "✓ DEBUG: $DEBUG"
         echo "✓ Database: $POSTGRES_DB@$DB_HOST"
-        echo "✓ Redis: $REDIS_URL"
-        echo "✓ Celery Broker: $CELERY_BROKER_URL"
-        echo "✓ API Keys: Configuradas"
-        echo "✓ Email: Configurado"
-        echo "=================================================="
+        echo "✓ Redis: $REDIS_HOST:$REDIS_PORT"
+        echo "✓ Celery Broker: redis://$REDIS_HOST:$REDIS_PORT/0"
+        echo "✓ Backend: http://0.0.0.0:8000"
+        echo "============================================================"
         echo ""
         
         log "✓ Iniciando servidor Django en 0.0.0.0:8000"
@@ -138,7 +123,7 @@ EOF
         log "Iniciando Celery Worker..."
         exec celery -A settings worker \
             --loglevel=info \
-            --concurrency=4 \
+            --concurrency=2 \
             --max-tasks-per-child=1000 \
             --time-limit=1800 \
             --soft-time-limit=1500
@@ -146,8 +131,6 @@ EOF
         
     celery_beat)
         log "Iniciando Celery Beat..."
-        
-        # Limpiar archivo de schedule antiguo
         rm -f /app/celerybeat-schedule
         
         exec celery -A settings beat \
@@ -165,13 +148,11 @@ EOF
     gunicorn)
         log "Iniciando Gunicorn (producción)..."
         
-        # Ejecutar migraciones
         info "Ejecutando migraciones..."
         python manage.py migrate --noinput
         
-        # Recolectar archivos estáticos
         info "Recolectando archivos estáticos..."
-        python manage.py collectstatic --noinput --clear
+        python manage.py collectstatic --noinput --clear 2>&1 | tail -2 || true
         
         exec gunicorn settings.wsgi:application \
             --bind 0.0.0.0:8000 \

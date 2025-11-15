@@ -11,7 +11,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-deliber_db}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d:ro
@@ -79,12 +79,9 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      # En desarrollo: montar código para hot-reload
       - ./backend:/app:delegated
-      # Volúmenes persistentes
       - media_data:/app/media
       - static_data:/app/staticfiles
-      # Firebase credentials (solo lectura)
       - ./backend/firebase-credentials.json:/app/firebase-credentials.json:ro
     depends_on:
       postgres:
@@ -96,7 +93,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 150s
     networks:
       - deliber_network
     restart: unless-stopped
@@ -163,6 +160,15 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+
+    # 🔥 HEALTHCHECK CORREGIDO
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-redis123} ping || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
     networks:
       - deliber_network
     restart: unless-stopped

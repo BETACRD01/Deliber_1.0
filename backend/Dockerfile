@@ -2,7 +2,7 @@
 # DOCKERFILE: Backend Django + Celery
 # ==========================================
 
-FROM python:3.11-alpine AS base
+FROM python:3.11-slim AS base
 
 # Variables de entorno
 ENV PYTHONUNBUFFERED=1 \
@@ -18,32 +18,26 @@ WORKDIR /app
 # ==========================================
 FROM base AS dependencies
 
+# Limpiar caché y actualizar índices
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* && apt-get update --fix-missing
+
 # Instalar dependencias del sistema necesarias
-RUN apk add --no-cache \
-    # PostgreSQL
-    postgresql-dev \
+RUN apt-get install -y --no-install-recommends \
     postgresql-client \
-    # Compiladores
+    libpq-dev \
     gcc \
     g++ \
     python3-dev \
-    musl-dev \
-    linux-headers \
-    libffi-dev \
-    # Pillow (imágenes)
-    jpeg-dev \
-    zlib-dev \
-    freetype-dev \
-    lcms2-dev \
-    openjpeg-dev \
-    tiff-dev \
-    tk-dev \
-    tcl-dev \
-    # Utilidades
+    libjpeg-dev \
+    zlib1g-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libopenjp2-7-dev \
+    libtiff-dev \
     bash \
     curl \
-    redis \
-    git
+    git \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ==========================================
 # STAGE 2: Instalación de Python packages
@@ -67,8 +61,8 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Crear usuario no-root para seguridad
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
+RUN groupadd -g 1000 appuser && \
+    useradd -d /app -s /sbin/nologin -c "App user" -u 1000 -g 1000 appuser
 
 # Crear directorios necesarios
 RUN mkdir -p /app/media /app/staticfiles /app/logs && \
