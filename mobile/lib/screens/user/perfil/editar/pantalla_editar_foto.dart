@@ -229,7 +229,7 @@ class _PantallaEditarFotoState extends State<PantallaEditarFoto> {
         color: JPColors.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -253,7 +253,7 @@ class _PantallaEditarFotoState extends State<PantallaEditarFoto> {
 
   Widget _buildPlaceholder() {
     return Container(
-      color: JPColors.primary.withOpacity(0.1),
+      color: JPColors.primary.withValues(alpha: 0.1),
       child: const Icon(Icons.person, size: 80, color: JPColors.primary),
     );
   }
@@ -279,7 +279,7 @@ class _PantallaEditarFotoState extends State<PantallaEditarFoto> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (color ?? JPColors.primary).withOpacity(0.1),
+                color: (color ?? JPColors.primary).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icono, color: color ?? JPColors.primary, size: 28),

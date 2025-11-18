@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../providers/proveedor_roles.dart';
+import '../../../config/rutas.dart';
 import '../controllers/supplier_controller.dart';
 import '../perfil/perfil_proveedor_panel.dart';
 
@@ -45,6 +47,18 @@ class SupplierDrawer extends StatelessWidget {
                 return const SizedBox.shrink();
               },
             ),
+
+            // ✅ SELECTOR DE ROLES (SI TIENE MÚLTIPLES ROLES)
+            Consumer<ProveedorRoles>(
+              builder: (context, proveedorRoles, child) {
+                if (!proveedorRoles.tieneMultiplesRoles) {
+                  return const SizedBox.shrink();
+                }
+
+                return _buildSelectorRoles(context, proveedorRoles);
+              },
+            ),
+
             const SizedBox(height: 8),
             _buildSeccion('MI NEGOCIO'),
             _buildMenuItem(
@@ -390,6 +404,301 @@ class SupplierDrawer extends StatelessWidget {
     );
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 🎭 SELECTOR DE ROLES
+  // ════════════════════════════════════════════════════════════════════════
+
+  Widget _buildSelectorRoles(
+    BuildContext context,
+    ProveedorRoles proveedorRoles,
+  ) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            _azul.withValues(alpha: 0.1),
+            _morado.withValues(alpha: 0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _azul.withValues(alpha: 0.3), width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: _azul, shape: BoxShape.circle),
+                child: const Icon(
+                  Icons.swap_horiz,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cambiar de Panel',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Tienes múltiples roles disponibles',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+
+          // Lista de roles disponibles para cambiar
+          ...proveedorRoles.rolesParaCambiar.map((rol) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _buildBotonCambiarRol(context, proveedorRoles, rol),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBotonCambiarRol(
+    BuildContext context,
+    ProveedorRoles proveedorRoles,
+    String rol,
+  ) {
+    final icono = _obtenerIconoRol(rol);
+    final nombre = _obtenerNombreRol(rol);
+    final color = _obtenerColorRol(rol);
+
+    return InkWell(
+      onTap: proveedorRoles.isLoading
+          ? null
+          : () => _confirmarCambioRol(context, proveedorRoles, rol),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(icono, color: color, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Cambiar a $nombre',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, color: color, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // 🎬 CONFIRMACIÓN DE CAMBIO DE ROL
+  // ════════════════════════════════════════════════════════════════════════
+
+  void _confirmarCambioRol(
+    BuildContext context,
+    ProveedorRoles proveedorRoles,
+    String nuevoRol,
+  ) {
+    final nombre = _obtenerNombreRol(nuevoRol);
+    final icono = _obtenerIconoRol(nuevoRol);
+    final color = _obtenerColorRol(nuevoRol);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(icono, color: color, size: 28),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('Cambiar de Panel')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '¿Deseas cambiar al panel de $nombre?',
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Serás redirigido automáticamente',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pop(context); // Cerrar drawer
+              _ejecutarCambioRol(context, proveedorRoles, nuevoRol);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Cambiar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _ejecutarCambioRol(
+    BuildContext context,
+    ProveedorRoles proveedorRoles,
+    String nuevoRol,
+  ) async {
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Cambiando de panel...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final exito = await proveedorRoles.cambiarARol(nuevoRol);
+
+      if (!context.mounted) return;
+
+      // Cerrar loading
+      Navigator.pop(context);
+
+      if (exito) {
+        // Navegar al panel correspondiente
+        await Rutas.irAHomePorRol(context, nuevoRol);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error al cambiar de rol')),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+
+      // Cerrar loading
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // 🎨 HELPERS DE UI
+  // ════════════════════════════════════════════════════════════════════════
+
+  IconData _obtenerIconoRol(String rol) {
+    switch (rol.toUpperCase()) {
+      case 'USUARIO':
+        return Icons.person;
+      case 'PROVEEDOR':
+        return Icons.store;
+      case 'REPARTIDOR':
+        return Icons.delivery_dining;
+      case 'ADMINISTRADOR':
+        return Icons.admin_panel_settings;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+  String _obtenerNombreRol(String rol) {
+    switch (rol.toUpperCase()) {
+      case 'USUARIO':
+        return 'Usuario';
+      case 'PROVEEDOR':
+        return 'Proveedor';
+      case 'REPARTIDOR':
+        return 'Repartidor';
+      case 'ADMINISTRADOR':
+        return 'Administrador';
+      default:
+        return rol;
+    }
+  }
+
+  Color _obtenerColorRol(String rol) {
+    switch (rol.toUpperCase()) {
+      case 'USUARIO':
+        return _azul;
+      case 'PROVEEDOR':
+        return _verde;
+      case 'REPARTIDOR':
+        return _naranja;
+      case 'ADMINISTRADOR':
+        return _morado;
+      default:
+        return _gris;
+    }
+  }
+
   // ============================================
   // SECCIÓN
   // ============================================
@@ -467,7 +776,7 @@ class SupplierDrawer extends StatelessWidget {
     return Consumer<SupplierController>(
       builder: (context, controller, child) {
         final count = controller.pedidosPendientesCount;
-        if (count == 0) return const SizedBox.shrink(); // ✅ CORREGIDO
+        if (count == 0) return const SizedBox.shrink();
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

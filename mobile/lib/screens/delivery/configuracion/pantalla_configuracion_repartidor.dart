@@ -65,7 +65,7 @@ class _PantallaConfiguracionRepartidorState
           SwitchListTile(
             title: const Text('Notificaciones'),
             subtitle: const Text('Recibir alertas de nuevos pedidos'),
-            activeColor: _verde,
+            activeThumbColor: _verde,
             value: notificacionesActivas,
             onChanged: (v) {
               setState(() => notificacionesActivas = v);
@@ -74,7 +74,7 @@ class _PantallaConfiguracionRepartidorState
           SwitchListTile(
             title: const Text('Modo oscuro'),
             subtitle: const Text('Usar tema oscuro en la aplicación'),
-            activeColor: _verde,
+            activeThumbColor: _verde,
             value: modoOscuro,
             onChanged: (v) {
               setState(() => modoOscuro = v);
@@ -83,7 +83,7 @@ class _PantallaConfiguracionRepartidorState
           SwitchListTile(
             title: const Text('Ubicación en tiempo real'),
             subtitle: const Text('Actualizar tu posición automáticamente'),
-            activeColor: _verde,
+            activeThumbColor: _verde,
             value: ubicacionEnTiempoReal,
             onChanged: (v) {
               setState(() => ubicacionEnTiempoReal = v);

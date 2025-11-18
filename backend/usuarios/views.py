@@ -1239,32 +1239,46 @@ def mi_ubicacion(request):
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def mis_solicitudes_cambio_rol(request):
-    """
-    GET: Obtiene mis solicitudes de cambio de rol
-    POST: Crea una nueva solicitud de cambio de rol
-    """
     try:
         user = request.user
 
-        # -----------------------------------------------------
-        # GET → LISTAR SOLICITUDES
-        # -----------------------------------------------------
         if request.method == "GET":
-
             solicitudes = user.solicitudes_cambio_rol.all().order_by("-creado_en")
 
+            # ✅ Calcular contadores antes de paginar
             pendientes = solicitudes.filter(estado="PENDIENTE").count()
             aceptadas = solicitudes.filter(estado="ACEPTADA").count()
             rechazadas = solicitudes.filter(estado="RECHAZADA").count()
+            total = solicitudes.count()
 
+            # ✅ NUEVO: Aplicar paginación
+            paginator = StandardResultsSetPagination()
+            page = paginator.paginate_queryset(solicitudes, request)
+
+            if page is not None:
+                serializer = SolicitudCambioRolListSerializer(page, many=True)
+                logger.info(f"📌 Solicitudes consultadas (paginadas): {user.email}")
+
+                # ✅ Usar get_paginated_response con datos extra
+                response = paginator.get_paginated_response(serializer.data)
+                response.data.update(
+                    {
+                        "total": total,
+                        "pendientes": pendientes,
+                        "aceptadas": aceptadas,
+                        "rechazadas": rechazadas,
+                    }
+                )
+                return response
+
+            # Fallback sin paginación
             serializer = SolicitudCambioRolListSerializer(solicitudes, many=True)
-
-            logger.info(f"📌 Solicitudes consultadas por {user.email}")
+            logger.info(f"📌 Solicitudes consultadas: {user.email}")
 
             return Response(
                 {
                     "solicitudes": serializer.data,
-                    "total": solicitudes.count(),
+                    "total": total,
                     "pendientes": pendientes,
                     "aceptadas": aceptadas,
                     "rechazadas": rechazadas,
@@ -1369,10 +1383,32 @@ def mis_solicitudes_cambio_rol(request):
 def detalle_solicitud_cambio_rol(request, solicitud_id):
     """
     GET: Obtiene el detalle de una solicitud específica
+    ✅ CORREGIDO: Manejo robusto de errores y validación de autenticación
     """
     try:
         user = request.user
-        solicitud = get_object_or_404(SolicitudCambioRol, id=solicitud_id, user=user)
+
+        # ✅ Validar explícitamente autenticación
+        if not user.is_authenticated:
+            logger.warning(
+                f"⚠️ Usuario no autenticado intentó acceder a solicitud: {solicitud_id}"
+            )
+            return Response(
+                {"error": "Debes iniciar sesión para ver esta solicitud"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # ✅ Buscar solicitud con try-except explícito
+        try:
+            solicitud = SolicitudCambioRol.objects.get(id=solicitud_id, user=user)
+        except SolicitudCambioRol.DoesNotExist:
+            logger.warning(
+                f"⚠️ Solicitud no encontrada: {solicitud_id} - Usuario: {user.email}"
+            )
+            return Response(
+                {"error": "Solicitud no encontrada o no tienes permiso para verla"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         serializer = SolicitudCambioRolDetalleSerializer(solicitud)
 
@@ -1380,14 +1416,15 @@ def detalle_solicitud_cambio_rol(request, solicitud_id):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    except SolicitudCambioRol.DoesNotExist:
-        return Response(
-            {"error": "Solicitud no encontrada"}, status=status.HTTP_404_NOT_FOUND
-        )
     except Exception as e:
-        logger.error(f"❌ Error obteniendo solicitud: {e}", exc_info=True)
+        logger.error(
+            f"❌ Error obteniendo solicitud {solicitud_id}: {e}", exc_info=True
+        )
         return Response(
-            {"error": "Error al obtener solicitud"},
+            {
+                "error": "Error al obtener solicitud",
+                "detalle": str(e) if settings.DEBUG else "Intenta nuevamente",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -1489,5 +1526,104 @@ def mis_roles(request):
         logger.error(f"❌ Error obteniendo mis roles: {e}", exc_info=True)
         return Response(
             {"error": "Error al obtener roles"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def verificar_roles_usuario(request):
+    """
+    Verifica los roles del usuario autenticado
+
+    GET /api/usuarios/verificar-roles/
+
+    Response:
+    {
+        "usuario_id": 1,
+        "email": "usuario@example.com",
+        "rol_principal": "USUARIO",
+        "rol_activo": "USUARIO",
+        "es_proveedor": false,
+        "es_repartidor": false,
+        "es_verificado": false,
+        "roles_disponibles": ["USUARIO"],
+        "puede_ser_proveedor": true,
+        "puede_ser_repartidor": true
+    }
+    """
+    try:
+        user = request.user
+
+        # Obtener datos básicos
+        usuario_id = user.id
+        email = user.email
+        rol_principal = user.rol
+        rol_activo = getattr(user, "rol_activo", user.rol)
+        es_verificado = user.verificado
+
+        # Verificar si es proveedor
+        es_proveedor = False
+        try:
+            from proveedores.models import Proveedor
+
+            proveedor = Proveedor.objects.filter(user=user).first()
+            es_proveedor = (
+                proveedor is not None and proveedor.activo and proveedor.verificado
+            )
+        except Exception as e:
+            logger.error(f"Error verificando proveedor: {e}")
+
+        # Verificar si es repartidor
+        es_repartidor = False
+        try:
+            from repartidores.models import Repartidor
+
+            repartidor = Repartidor.objects.filter(user=user).first()
+            es_repartidor = (
+                repartidor is not None and repartidor.activo and repartidor.verificado
+            )
+        except Exception as e:
+            logger.error(f"Error verificando repartidor: {e}")
+
+        # Obtener roles disponibles
+        roles_disponibles = (
+            user.obtener_todos_los_roles()
+            if hasattr(user, "obtener_todos_los_roles")
+            else [user.rol]
+        )
+
+        # Verificar si puede solicitar ser proveedor/repartidor
+        puede_solicitar = (
+            es_verificado and user.is_active and not user.cuenta_desactivada
+        )
+
+        respuesta = {
+            "usuario_id": usuario_id,
+            "email": email,
+            "rol_principal": rol_principal,
+            "rol_activo": rol_activo,
+            "es_proveedor": es_proveedor,
+            "es_repartidor": es_repartidor,
+            "es_verificado": es_verificado,
+            "roles_disponibles": roles_disponibles,
+            "puede_solicitar": puede_solicitar,
+            "tiene_perfil_completo": user.celular is not None
+            and user.email is not None,
+        }
+
+        logger.info(
+            f"✅ Roles verificados para {email}: PROVEEDOR={es_proveedor}, REPARTIDOR={es_repartidor}"
+        )
+
+        return Response(respuesta, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"❌ Error verificando roles: {e}", exc_info=True)
+        return Response(
+            {
+                "error": "Error al verificar roles",
+                "detalle": str(e) if False else "Intenta más tarde",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

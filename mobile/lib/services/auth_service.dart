@@ -6,6 +6,44 @@ import '../apis/helpers/api_validators.dart';
 import '../apis/helpers/api_exception.dart';
 import 'dart:developer' as developer;
 
+// ============================================
+// 👤 MODELO: UserInfo - TOP-LEVEL (ANTES DE AuthService)
+// ============================================
+
+/// Modelo simplificado para representar usuario
+class UserInfo {
+  final String email;
+  final List<String> roles;
+  final int? userId;
+
+  UserInfo({required this.email, required this.roles, this.userId});
+
+  /// Verifica si el usuario tiene un rol específico
+  bool tieneRol(String rol) {
+    return roles.any((r) => r.toUpperCase() == rol.toUpperCase());
+  }
+
+  /// Verifica si es proveedor
+  bool get esProveedor => tieneRol('PROVEEDOR');
+
+  /// Verifica si es repartidor
+  bool get esRepartidor => tieneRol('REPARTIDOR');
+
+  /// Verifica si es administrador
+  bool get esAdmin => tieneRol('ADMINISTRADOR');
+
+  /// Verifica si es usuario anónimo
+  bool get esAnonimo => email.toLowerCase().contains('anonymous');
+
+  @override
+  String toString() =>
+      'UserInfo(email: $email, roles: $roles, userId: $userId)';
+}
+
+// ============================================
+// 🔐 AuthService
+// ============================================
+
 /// Servicio de Autenticación - SOLO lógica de autenticación
 /// ✅ CORREGIDO: Ahora extrae correctamente rol y userId de response['tokens']
 class AuthService {
@@ -104,7 +142,7 @@ class AuthService {
     _log('🔐 Login para: $email');
 
     final response = await _client.post(ApiConfig.login, {
-      'email': email,
+      'identificador': email,
       'password': password,
     });
 
@@ -425,6 +463,69 @@ class AuthService {
     }
 
     _log('╚════════════════════════════════════════════════════════════╝');
+  }
+
+  // ============================================
+  // ✅ GETTER USER - Para compatibilidad con formularios
+  // ============================================
+
+  /// Obtiene objeto User simplificado para verificar estado
+  UserInfo? get user {
+    if (!isAuthenticated) return null;
+
+    // Obtener datos cacheados
+    final rol = getRolCacheado();
+    final userId = getUserIdCacheado();
+
+    // Si no hay rol ni datos, retornar null
+    if (rol == null) return null;
+
+    return UserInfo(
+      email:
+          'usuario@deliber.com', // Email genérico (no se guarda en ApiClient)
+      roles: [rol],
+      userId: userId,
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // 🎭 GESTIÓN DE ROLES MÚLTIPLES
+  // ════════════════════════════════════════════════════════════════════════
+
+  /// Obtiene los roles disponibles del usuario
+  Future<Map<String, dynamic>> obtenerRolesDisponibles() async {
+    return await _client.get(ApiConfig.usuariosMisRoles);
+  }
+
+  /// Cambia el rol activo del usuario
+  ///
+  /// [nuevoRol] - Rol a activar (USUARIO, PROVEEDOR, REPARTIDOR)
+  ///
+  /// Retorna la respuesta del backend con los nuevos tokens
+  Future<Map<String, dynamic>> cambiarRolActivo(String nuevoRol) async {
+    _log('🔄 Cambiando rol activo a: $nuevoRol');
+
+    final response = await _client.post(ApiConfig.usuariosCambiarRolActivo, {
+      'rol': nuevoRol.toUpperCase(),
+    });
+
+    // Actualizar tokens con el nuevo rol
+    if (response.containsKey('tokens')) {
+      final tokens = response['tokens'];
+
+      await _client.saveTokens(
+        tokens['access'],
+        tokens['refresh'],
+        role: tokens['rol'] as String?,
+        userId: _client.userId,
+        tokenLifetime: const Duration(hours: 12),
+      );
+
+      _log('✅ Rol cambiado exitosamente a: ${tokens['rol']}');
+      _log('   Tokens actualizados en memoria');
+    }
+
+    return response;
   }
 
   // ============================================

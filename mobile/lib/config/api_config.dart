@@ -8,15 +8,20 @@ class ApiConfig {
   // 🌐 CONFIGURACIÓN DE REDES
   // ════════════════════════════════════════════════════════════════════════
 
-  // ✅ RED CASA
+  // 🏠 RED CASA
   static const String redCasaPrefix = '192.168.1';
-  static const String ipServidorCasa = '192.168.1.5';
 
-  // ✅ RED INSTITUCIONAL - CORREGIDO: 172.16.56.215 → 172.16.60.5
+  // ✔ Tu casa
+  static const String ipServidorCasaTuya = '192.168.1.5';
+
+  // ✔ Casa del vecino (ACTUAL)
+  static const String ipServidorCasaVecino = '192.168.1.22';
+
+  // 🏢 RED INSTITUCIONAL
   static const String redInstitucionalPrefix = '172.16';
   static const String ipServidorInstitucional = '172.16.60.5';
 
-  // ✅ RED HOTSPOT
+  // 📱 HOTSPOT
   static const String redHotspotPrefix = '192.168.137';
   static const String ipServidorHotspot = '192.168.137.1';
 
@@ -40,10 +45,12 @@ class ApiConfig {
       developer.log('🌐 Detectando red...', name: 'Deliber API');
       await detectServerIp();
       _isInitialized = true;
+
       developer.log(
         '✅ ApiConfig inicializado correctamente',
         name: 'Deliber API',
       );
+
       await printDebugInfo();
     } catch (e) {
       developer.log(
@@ -51,14 +58,15 @@ class ApiConfig {
         name: 'Deliber API',
         error: e,
       );
-      _cachedServerIp = ipServidorCasa;
+      // fallback por si falla
+      _cachedServerIp = ipServidorCasaVecino;
       _lastDetectedNetwork = 'CASA (Fallback)';
       _isInitialized = true;
     }
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // ✅ DETECCIÓN AUTOMÁTICA DE RED
+  // 🔥 DETECCIÓN AUTOMÁTICA DE RED (CORREGIDA)
   // ════════════════════════════════════════════════════════════════════════
 
   static Future<String> detectServerIp() async {
@@ -68,60 +76,74 @@ class ApiConfig {
 
       if (wifiIP == null || wifiIP.isEmpty) {
         developer.log(
-          '⚠️ No se pudo detectar IP WiFi, usando servidor casa',
+          '⚠️ No se pudo detectar IP WiFi, usando CASA (vecino)',
           name: 'Deliber API',
         );
-        _cachedServerIp = ipServidorCasa;
+        _cachedServerIp = ipServidorCasaVecino;
         _lastDetectedNetwork = 'CASA (Sin WiFi)';
-        return _buildUrl(ipServidorCasa);
+        return _buildUrl(ipServidorCasaVecino);
       }
 
       developer.log('📱 IP Dispositivo: $wifiIP', name: 'Deliber API');
 
+      // 🏠 CASA (dos posibles redes)
       if (wifiIP.startsWith(redCasaPrefix)) {
         _lastDetectedNetwork = 'CASA';
-        _cachedServerIp = ipServidorCasa;
-        developer.log(
-          '🏠 Red detectada: CASA ($ipServidorCasa)',
-          name: 'Deliber API',
-        );
-        return _buildUrl(ipServidorCasa);
-      } else if (wifiIP.startsWith(redHotspotPrefix)) {
+
+        // vecino
+        if (wifiIP == ipServidorCasaVecino || wifiIP.endsWith('.22')) {
+          _cachedServerIp = ipServidorCasaVecino;
+          developer.log(
+            '🏠 Red CASA (vecino): $ipServidorCasaVecino',
+            name: 'Deliber API',
+          );
+          return _buildUrl(ipServidorCasaVecino);
+        }
+
+        // tu casa
+        if (wifiIP == ipServidorCasaTuya || wifiIP.endsWith('.5')) {
+          _cachedServerIp = ipServidorCasaTuya;
+          developer.log(
+            '🏠 Red CASA (tu casa): $ipServidorCasaTuya',
+            name: 'Deliber API',
+          );
+          return _buildUrl(ipServidorCasaTuya);
+        }
+
+        // fallback → vecino
+        _cachedServerIp = ipServidorCasaVecino;
+        return _buildUrl(ipServidorCasaVecino);
+      }
+
+      // 📱 HOTSPOT
+      if (wifiIP.startsWith(redHotspotPrefix)) {
         _lastDetectedNetwork = 'HOTSPOT';
         _cachedServerIp = ipServidorHotspot;
-        developer.log(
-          '📱 Red detectada: HOTSPOT ($ipServidorHotspot)',
-          name: 'Deliber API',
-        );
         return _buildUrl(ipServidorHotspot);
-      } else if (wifiIP.startsWith(redInstitucionalPrefix)) {
+      }
+
+      // 🏢 RED INSTITUCIONAL
+      if (wifiIP.startsWith(redInstitucionalPrefix)) {
         _lastDetectedNetwork = 'INSTITUCIONAL';
         _cachedServerIp = ipServidorInstitucional;
-        developer.log(
-          '🏢 Red detectada: INSTITUCIONAL ($ipServidorInstitucional)',
-          name: 'Deliber API',
-        );
         return _buildUrl(ipServidorInstitucional);
-      } else {
-        developer.log(
-          '❓ Red desconocida: $wifiIP, usando servidor casa',
-          name: 'Deliber API',
-        );
-        _lastDetectedNetwork = 'DESCONOCIDA';
-        _cachedServerIp = ipServidorCasa;
-        return _buildUrl(ipServidorCasa);
       }
+
+      // ❓ DESCONOCIDA
+      _lastDetectedNetwork = 'DESCONOCIDA';
+      _cachedServerIp = ipServidorCasaVecino;
+      return _buildUrl(ipServidorCasaVecino);
     } catch (e) {
-      developer.log(
-        '❌ Error detectando red: $e',
-        name: 'Deliber API',
-        error: e,
-      );
-      _cachedServerIp = ipServidorCasa;
-      _lastDetectedNetwork = 'ERROR (Fallback)';
-      return _buildUrl(ipServidorCasa);
+      developer.log('❌ Error detectando red: $e', name: 'Deliber API');
+      _cachedServerIp = ipServidorCasaVecino;
+      _lastDetectedNetwork = 'ERROR';
+      return _buildUrl(ipServidorCasaVecino);
     }
   }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // 🔧 URL BUILDER
+  // ════════════════════════════════════════════════════════════════════════
 
   static String _buildUrl(String ip) {
     return 'http://$ip:$puertoServidor';
@@ -130,20 +152,19 @@ class ApiConfig {
   static Future<String> getBaseUrl() async {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
 
-    if (isProduction) {
-      return 'https://api.deliber.com';
-    } else {
-      if (_cachedServerIp != null) {
-        return _buildUrl(_cachedServerIp!);
-      }
-      return await detectServerIp();
-    }
+    if (isProduction) return 'https://api.deliber.com';
+
+    if (_cachedServerIp != null) return _buildUrl(_cachedServerIp!);
+
+    return await detectServerIp();
   }
 
   static Future<String> refreshNetworkDetection() async {
     _cachedServerIp = null;
     _lastDetectedNetwork = null;
-    developer.log('🔄 Forzando re-detección de red...', name: 'Deliber API');
+
+    developer.log('🔄 Re-detectando red...', name: 'Deliber API');
+
     return await detectServerIp();
   }
 
@@ -158,6 +179,7 @@ class ApiConfig {
     _forceManualIp = true;
     _manualIp = ip;
     _cachedServerIp = ip;
+
     developer.log('🔧 IP manual forzada: $ip', name: 'Deliber API');
   }
 
@@ -165,6 +187,7 @@ class ApiConfig {
     _forceManualIp = false;
     _manualIp = null;
     _cachedServerIp = null;
+
     developer.log('🔄 Modo automático activado', name: 'Deliber API');
   }
 
@@ -175,9 +198,7 @@ class ApiConfig {
   static String get baseUrl {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
 
-    if (isProduction) {
-      return 'https://api.deliber.com';
-    }
+    if (isProduction) return 'https://api.deliber.com';
 
     if (_forceManualIp && _manualIp != null) {
       return _buildUrl(_manualIp!);
@@ -187,14 +208,7 @@ class ApiConfig {
       return _buildUrl(_cachedServerIp!);
     }
 
-    if (!_isInitialized) {
-      developer.log(
-        '⚠️ baseUrl usado antes de initialize(), usando casa',
-        name: 'Deliber API',
-      );
-    }
-
-    return _buildUrl(ipServidorCasa);
+    return _buildUrl(ipServidorCasaVecino);
   }
 
   static String get apiUrl => '$baseUrl/api';
@@ -202,16 +216,54 @@ class ApiConfig {
   // ════════════════════════════════════════════════════════════════════════
   // SOLICITUDES DE CAMBIO DE ROL
   // ════════════════════════════════════════════════════════════════════════
+
+  // ─────────────────────────────────────────────
+  // 👤 USUARIO – Solicitudes de Cambio de Rol
+  // ─────────────────────────────────────────────
+
+  /// GET/POST - Listar y crear mis solicitudes
   static String get usuariosSolicitudesCambioRol =>
       '$apiUrl/usuarios/solicitudes-cambio-rol/';
 
+  /// GET - Detalle de una solicitud específica
   static String usuariosSolicitudCambioRolDetalle(String id) =>
       '$apiUrl/usuarios/solicitudes-cambio-rol/$id/';
 
+  /// POST - Cambiar rol activo del usuario
   static String get usuariosCambiarRolActivo =>
       '$apiUrl/usuarios/cambiar-rol-activo/';
 
+  /// GET - Obtener mis roles disponibles
   static String get usuariosMisRoles => '$apiUrl/usuarios/mis-roles/';
+
+  // ─────────────────────────────────────────────
+  // 🛡️ ADMIN – Solicitudes de Cambio de Rol
+  // ─────────────────────────────────────────────
+
+  /// GET - Listar todas las solicitudes (admin)
+  static String get adminSolicitudesCambioRol =>
+      '$apiUrl/admin/solicitudes-cambio-rol/';
+
+  /// GET/PUT/PATCH/DELETE - Detalle de solicitud (admin)
+  /// ✅ CORREGIDO: String (UUID) en lugar de int
+  static String adminSolicitudCambioRolDetalle(String id) =>
+      '$apiUrl/admin/solicitudes-cambio-rol/$id/';
+
+  /// POST - Aceptar solicitud (admin)
+  static String adminAceptarSolicitud(String id) =>
+      '$apiUrl/admin/solicitudes-cambio-rol/$id/aceptar/';
+
+  /// POST - Rechazar solicitud (admin)
+  static String adminRechazarSolicitud(String id) =>
+      '$apiUrl/admin/solicitudes-cambio-rol/$id/rechazar/';
+
+  /// GET - Listar solicitudes pendientes (admin)
+  static String get adminSolicitudesPendientes =>
+      '$apiUrl/admin/solicitudes-cambio-rol/pendientes/';
+
+  /// GET - Estadísticas de solicitudes (admin)
+  static String get adminSolicitudesEstadisticas =>
+      '$apiUrl/admin/solicitudes-cambio-rol/estadisticas/';
 
   // ════════════════════════════════════════════════════════════════════════
   // BLOQUE 1: 📝 AUTH ENDPOINTS

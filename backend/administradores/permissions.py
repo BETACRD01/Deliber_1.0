@@ -9,19 +9,22 @@ Permisos personalizados para el módulo de administradores
 
 from rest_framework import permissions
 from rest_framework.exceptions import PermissionDenied
+
 import logging
 
-logger = logging.getLogger('administradores')
+logger = logging.getLogger("administradores")
 
 
 # ============================================
 # PERMISO BASE: ES ADMINISTRADOR
 # ============================================
 
+
 class EsAdministrador(permissions.BasePermission):
     """
     Permiso base: solo usuarios con rol ADMINISTRADOR o superusuarios
     """
+
     message = "Solo los administradores pueden acceder a esta funcionalidad."
 
     def has_permission(self, request, view):
@@ -33,9 +36,9 @@ class EsAdministrador(permissions.BasePermission):
 
         # Verificar si es administrador o superusuario
         es_admin = (
-            request.user.is_superuser or
-            request.user.is_staff or
-            request.user.es_administrador()
+            request.user.is_superuser
+            or request.user.is_staff
+            or request.user.es_administrador()
         )
 
         if not es_admin:
@@ -51,10 +54,12 @@ class EsAdministrador(permissions.BasePermission):
 # PERMISO: PUEDE GESTIONAR USUARIOS
 # ============================================
 
+
 class PuedeGestionarUsuarios(permissions.BasePermission):
     """
     Permiso para gestionar usuarios (listar, editar, desactivar, etc.)
     """
+
     message = "No tienes permiso para gestionar usuarios."
 
     def has_permission(self, request, view):
@@ -98,10 +103,12 @@ class PuedeGestionarUsuarios(permissions.BasePermission):
 # PERMISO: PUEDE GESTIONAR PROVEEDORES
 # ============================================
 
+
 class PuedeGestionarProveedores(permissions.BasePermission):
     """
     Permiso para gestionar proveedores (verificar, desactivar, etc.)
     """
+
     message = "No tienes permiso para gestionar proveedores."
 
     def has_permission(self, request, view):
@@ -141,10 +148,12 @@ class PuedeGestionarProveedores(permissions.BasePermission):
 # PERMISO: PUEDE GESTIONAR REPARTIDORES
 # ============================================
 
+
 class PuedeGestionarRepartidores(permissions.BasePermission):
     """
     Permiso para gestionar repartidores (verificar, desactivar, etc.)
     """
+
     message = "No tienes permiso para gestionar repartidores."
 
     def has_permission(self, request, view):
@@ -184,10 +193,12 @@ class PuedeGestionarRepartidores(permissions.BasePermission):
 # PERMISO: PUEDE GESTIONAR PEDIDOS
 # ============================================
 
+
 class PuedeGestionarPedidos(permissions.BasePermission):
     """
     Permiso para gestionar pedidos (cancelar, reasignar, etc.)
     """
+
     message = "No tienes permiso para gestionar pedidos."
 
     def has_permission(self, request, view):
@@ -227,10 +238,12 @@ class PuedeGestionarPedidos(permissions.BasePermission):
 # PERMISO: PUEDE GESTIONAR RIFAS
 # ============================================
 
+
 class PuedeGestionarRifas(permissions.BasePermission):
     """
     Permiso para gestionar rifas (crear, sortear, cancelar)
     """
+
     message = "No tienes permiso para gestionar rifas."
 
     def has_permission(self, request, view):
@@ -270,10 +283,12 @@ class PuedeGestionarRifas(permissions.BasePermission):
 # PERMISO: PUEDE VER REPORTES
 # ============================================
 
+
 class PuedeVerReportes(permissions.BasePermission):
     """
     Permiso para acceder a reportes y estadísticas
     """
+
     message = "No tienes permiso para ver reportes."
 
     def has_permission(self, request, view):
@@ -313,11 +328,13 @@ class PuedeVerReportes(permissions.BasePermission):
 # PERMISO: PUEDE CONFIGURAR SISTEMA
 # ============================================
 
+
 class PuedeConfigurarSistema(permissions.BasePermission):
     """
     Permiso para modificar configuraciones globales del sistema
     Solo super administradores
     """
+
     message = "Solo los super administradores pueden configurar el sistema."
 
     def has_permission(self, request, view):
@@ -357,11 +374,13 @@ class PuedeConfigurarSistema(permissions.BasePermission):
 # PERMISO: SOLO LECTURA
 # ============================================
 
+
 class SoloLecturaAdmin(permissions.BasePermission):
     """
     Permite solo operaciones de lectura (GET, HEAD, OPTIONS)
     Útil para administradores con permisos limitados
     """
+
     message = "Solo tienes permisos de lectura."
 
     def has_permission(self, request, view):
@@ -375,10 +394,12 @@ class SoloLecturaAdmin(permissions.BasePermission):
 # PERMISO COMPUESTO: ADMINISTRADOR ACTIVO
 # ============================================
 
+
 class AdministradorActivo(permissions.BasePermission):
     """
     Verifica que el administrador esté activo
     """
+
     message = "Tu cuenta de administrador está inactiva."
 
     def has_permission(self, request, view):
@@ -414,6 +435,7 @@ class AdministradorActivo(permissions.BasePermission):
 # VALIDADOR: NO MODIFICAR SUPERUSUARIOS
 # ============================================
 
+
 def validar_no_es_superusuario(usuario_objetivo):
     """
     Valida que no se intente modificar un superusuario
@@ -425,9 +447,7 @@ def validar_no_es_superusuario(usuario_objetivo):
         PermissionDenied: Si es superusuario
     """
     if usuario_objetivo.is_superuser:
-        logger.warning(
-            f"⚠️ Intento de modificar superusuario: {usuario_objetivo.email}"
-        )
+        logger.warning(f"⚠️ Intento de modificar superusuario: {usuario_objetivo.email}")
         raise PermissionDenied(
             "No se puede modificar un superusuario desde esta interfaz."
         )
@@ -436,6 +456,7 @@ def validar_no_es_superusuario(usuario_objetivo):
 # ============================================
 # VALIDADOR: NO AUTO-MODIFICACIÓN CRÍTICA
 # ============================================
+
 
 def validar_no_auto_modificacion_critica(usuario_actual, usuario_objetivo, accion):
     """
@@ -450,7 +471,7 @@ def validar_no_auto_modificacion_critica(usuario_actual, usuario_objetivo, accio
         PermissionDenied: Si intenta modificarse a sí mismo
     """
     if usuario_actual.id == usuario_objetivo.id:
-        acciones_criticas = ['desactivar', 'cambiar_rol', 'eliminar']
+        acciones_criticas = ["desactivar", "cambiar_rol", "eliminar"]
 
         if accion in acciones_criticas:
             logger.warning(
@@ -466,6 +487,7 @@ def validar_no_auto_modificacion_critica(usuario_actual, usuario_objetivo, accio
 # ============================================
 # HELPER: OBTENER PERFIL ADMIN
 # ============================================
+
 
 def obtener_perfil_admin(user):
     """
@@ -486,6 +508,7 @@ def obtener_perfil_admin(user):
 # ============================================
 # HELPER: VERIFICAR PERMISO ESPECÍFICO
 # ============================================
+
 
 def tiene_permiso_especifico(user, permiso):
     """
@@ -516,6 +539,7 @@ def tiene_permiso_especifico(user, permiso):
 # DECORATOR: REQUIERE PERMISO
 # ============================================
 
+
 def requiere_permiso(permiso):
     """
     Decorator para validar permisos en vistas
@@ -525,6 +549,7 @@ def requiere_permiso(permiso):
         def mi_vista(request):
             ...
     """
+
     def decorator(func):
         def wrapper(request, *args, **kwargs):
             if not tiene_permiso_especifico(request.user, permiso):
@@ -532,17 +557,18 @@ def requiere_permiso(permiso):
                     f"⚠️ Permiso denegado: {request.user.email} "
                     f"no tiene permiso '{permiso}'"
                 )
-                raise PermissionDenied(
-                    f"No tienes permiso para realizar esta acción."
-                )
+                raise PermissionDenied(f"No tienes permiso para realizar esta acción.")
             return func(request, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 # ============================================
 # CLASE: PERMISO DINÁMICO
 # ============================================
+
 
 class PermisoDinamico(permissions.BasePermission):
     """
@@ -561,7 +587,7 @@ class PermisoDinamico(permissions.BasePermission):
             return False
 
         # Obtener el permiso requerido desde el view
-        permiso_requerido = getattr(view, 'permiso_requerido', None)
+        permiso_requerido = getattr(view, "permiso_requerido", None)
 
         if not permiso_requerido:
             logger.error("❌ View no especifica permiso_requerido")
@@ -573,6 +599,7 @@ class PermisoDinamico(permissions.BasePermission):
 # ============================================
 # VALIDADOR: MÚLTIPLES PERMISOS (AND)
 # ============================================
+
 
 class RequiereMultiplesPermisos(permissions.BasePermission):
     """
@@ -591,7 +618,7 @@ class RequiereMultiplesPermisos(permissions.BasePermission):
             return False
 
         # Obtener lista de permisos requeridos
-        permisos = getattr(view, 'permisos_requeridos', [])
+        permisos = getattr(view, "permisos_requeridos", [])
 
         if not permisos:
             return True
@@ -612,6 +639,7 @@ class RequiereMultiplesPermisos(permissions.BasePermission):
 # VALIDADOR: MÚLTIPLES PERMISOS (OR)
 # ============================================
 
+
 class RequiereCualquierPermiso(permissions.BasePermission):
     """
     Requiere que el usuario tenga AL MENOS UNO de los permisos especificados
@@ -629,7 +657,7 @@ class RequiereCualquierPermiso(permissions.BasePermission):
             return False
 
         # Obtener lista de permisos opcionales
-        permisos = getattr(view, 'permisos_opcionales', [])
+        permisos = getattr(view, "permisos_opcionales", [])
 
         if not permisos:
             return True
@@ -645,3 +673,53 @@ class RequiereCualquierPermiso(permissions.BasePermission):
         )
 
         return False
+
+
+# ============================================
+# PERMISO: PUEDE GESTIONAR SOLICITUDES DE CAMBIO DE ROL
+# ============================================
+
+
+class PuedeGestionarSolicitudes(permissions.BasePermission):
+    """
+    Permiso para gestionar solicitudes de cambio de rol
+    (aceptar/rechazar solicitudes de usuarios que quieren ser Proveedor/Repartidor)
+    """
+
+    message = "No tienes permiso para gestionar solicitudes de cambio de rol."
+
+    def has_permission(self, request, view):
+        """
+        Verifica que el administrador tenga permiso para gestionar solicitudes
+        """
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        # Superusuarios siempre pueden
+        if request.user.is_superuser:
+            return True
+
+        # Verificar permiso específico
+        try:
+            admin = request.user.perfil_admin
+
+            if not admin.activo:
+                logger.warning(
+                    f"⚠️ Administrador inactivo intentó gestionar solicitudes: "
+                    f"{request.user.email}"
+                )
+                return False
+
+            tiene_permiso = admin.puede_gestionar_solicitudes
+
+            if not tiene_permiso:
+                logger.warning(
+                    f"⚠️ Administrador sin permiso intentó gestionar solicitudes: "
+                    f"{request.user.email}"
+                )
+
+            return tiene_permiso
+
+        except Exception as e:
+            logger.error(f"❌ Error verificando permisos de solicitudes: {e}")
+            return False

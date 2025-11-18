@@ -11,8 +11,8 @@ class JPColors {
   // Colores principales
   static const primary = Color(0xFF0cb7f2); // Azul
   static const secondary = Color(0xFFFF7B00); // Naranja
-  static const accent = Color(0xFFFFB800); // Amarillo
 
+  static const accent = Color(0xFFFFB800); // Amarillo
   // Fondos
   static const background = Color(0xFFF5F7FA);
   static const cardBg = Colors.white;
@@ -78,6 +78,24 @@ class JPTextStyles {
   static const caption = TextStyle(fontSize: 14, color: JPColors.textSecondary);
 
   static const small = TextStyle(fontSize: 12, color: JPColors.textHint);
+  // NUEVOS ESTILOS — h4, h5, h6
+  static const h4 = TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.w600,
+    color: JPColors.textPrimary,
+  );
+
+  static const h5 = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: JPColors.textPrimary,
+  );
+
+  static const h6 = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    color: JPColors.textPrimary,
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -156,7 +174,7 @@ class JPAvatar extends StatelessWidget {
               border: Border.all(color: Colors.white, width: 3),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withAlpha(51),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -193,7 +211,7 @@ class JPAvatar extends StatelessWidget {
     if (imageUrl == null || imageUrl!.isEmpty) {
       // Avatar por defecto
       return Container(
-        color: JPColors.primary.withOpacity(0.1),
+        color: JPColors.primary.withValues(alpha: 0.1),
         child: Icon(Icons.person, size: radius * 1.2, color: JPColors.primary),
       );
     }
@@ -209,7 +227,7 @@ class JPAvatar extends StatelessWidget {
         ),
       ),
       errorWidget: (context, url, error) => Container(
-        color: JPColors.error.withOpacity(0.1),
+        color: JPColors.error.withValues(alpha: 0.1),
         child: Icon(Icons.person, size: radius * 1.2, color: JPColors.error),
       ),
     );

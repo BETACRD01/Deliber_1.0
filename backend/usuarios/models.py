@@ -867,6 +867,7 @@ class SolicitudCambioRol(models.Model):
         ("PENDIENTE", "Pendiente de Revisión"),
         ("ACEPTADA", "Aceptada"),
         ("RECHAZADA", "Rechazada"),
+        ("REVERTIDA", "Revertida"),
     ]
 
     ROL_SOLICITADO_CHOICES = [
@@ -891,6 +892,38 @@ class SolicitudCambioRol(models.Model):
         verbose_name="Motivo de la Solicitud",
         help_text="¿Por qué deseas cambiar de rol?",
         max_length=500,
+    )
+
+    # ✅ NUEVO CAMPO: Guardar el rol anterior del usuario
+    rol_anterior = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name="Rol Anterior",
+        help_text="Rol que tenía el usuario antes del cambio",
+        db_index=True,
+    )
+
+    # ✅ NUEVOS CAMPOS: Información de reversión
+    revertido_en = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha de Reversión",
+        db_index=True,
+    )
+
+    revertido_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="solicitudes_rol_revertidas",
+        verbose_name="Admin que Revirtió",
+    )
+
+    motivo_reversion = models.TextField(
+        blank=True,
+        verbose_name="Motivo de la Reversión",
+        help_text="Razón por la que se revirtió el cambio de rol",
     )
 
     # =============================================
@@ -1135,3 +1168,63 @@ def rechazar(self, admin, motivo_respuesta):
     return GestorSolicitudCambioRol.rechazar_solicitud(
         solicitud=self, admin=admin, motivo_respuesta=motivo_respuesta
     )
+
+
+def revertir(self, admin, motivo_reversion=""):
+    """
+    Revierte un cambio de rol ACEPTADO
+
+    Args:
+        admin: Usuario administrador que revierte
+        motivo_reversion: Razón de la reversión
+
+    Raises:
+        ValidationError: Si no se puede revertir
+    """
+    from django.core.exceptions import ValidationError
+
+    # Validaciones
+    if self.estado != "ACEPTADA":
+        raise ValidationError(
+            f"Solo se pueden revertir solicitudes ACEPTADAS. "
+            f"Estado actual: {self.get_estado_display()}"
+        )
+
+    if not self.rol_anterior:
+        raise ValidationError("No se puede revertir: no se guardó el rol anterior")
+
+    # Revertir el rol del usuario
+    self.user.rol = self.rol_anterior
+    self.user.save(update_fields=["rol", "updated_at"])
+
+    # Actualizar la solicitud
+    self.estado = "REVERTIDA"
+    self.revertido_por = admin
+    self.revertido_en = timezone.now()
+    self.motivo_reversion = motivo_reversion
+    self.save(
+        update_fields=[
+            "estado",
+            "revertido_por",
+            "revertido_en",
+            "motivo_reversion",
+        ]
+    )
+
+    logger.warning(
+        f"🔄 Solicitud revertida: {self.user.email} "
+        f"{self.rol_solicitado} → {self.rol_anterior} "
+        f"por {admin.email}. Motivo: {motivo_reversion}"
+    )
+
+
+@property
+def fue_revertida(self):
+    """Verifica si fue revertida"""
+    return self.estado == "REVERTIDA"
+
+
+@property
+def puede_revertirse(self):
+    """Verifica si puede ser revertida"""
+    return self.estado == "ACEPTADA" and bool(self.rol_anterior)

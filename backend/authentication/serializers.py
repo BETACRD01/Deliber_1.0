@@ -24,6 +24,8 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'celular', 'fecha_nacimiento', 'edad', 'created_at',
+            # Administración
+            'is_superuser', 'is_staff', 'is_active', 'rol',
             # Términos
             'terminos_aceptados', 'terminos_fecha_aceptacion', 'terminos_version_aceptada',
             # Notificaciones

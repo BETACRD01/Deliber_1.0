@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import './panel_registro_rol/registro_usuario_form.dart';
-import './panel_registro_rol/registro_proveedor_form.dart';
-import './panel_registro_rol/registro_repartidor_form.dart';
 
 /// Pantalla de registro principal - JP Express
 /// Selector de tipo de cuenta con animaciones mejoradas
@@ -30,20 +28,6 @@ class _PantallaRegistroState extends State<PantallaRegistro>
       'icono': Icons.person_rounded,
       'descripcion': 'Realiza pedidos',
       'color': Color(0xFF4FC3F7),
-    },
-    {
-      'valor': 'REPARTIDOR',
-      'titulo': 'Repartidor',
-      'icono': Icons.two_wheeler_rounded,
-      'descripcion': 'Entrega pedidos',
-      'color': Color(0xFFFF9800),
-    },
-    {
-      'valor': 'PROVEEDOR',
-      'titulo': 'Proveedor',
-      'icono': Icons.storefront_rounded,
-      'descripcion': 'Vende productos',
-      'color': Color(0xFF4CAF50),
     },
   ];
 
@@ -404,10 +388,6 @@ class _PantallaRegistroState extends State<PantallaRegistro>
 
   Widget _buildFormularioActual() {
     switch (_rolSeleccionado) {
-      case 'PROVEEDOR':
-        return RegistroProveedorForm();
-      case 'REPARTIDOR':
-        return RegistroRepartidorForm();
       default:
         return RegistroUsuarioForm();
     }

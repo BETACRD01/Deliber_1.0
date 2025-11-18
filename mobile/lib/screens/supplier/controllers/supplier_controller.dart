@@ -407,9 +407,4 @@ class SupplierController extends ChangeNotifier {
       return false;
     }
   }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
 }

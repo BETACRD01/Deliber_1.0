@@ -693,7 +693,7 @@ class _PerfilProveedorEditableState extends State<PerfilProveedorEditable>
     }
 
     return DropdownButtonFormField<String>(
-      value: _tipoProveedorSeleccionado,
+      initialValue: _tipoProveedorSeleccionado,
       decoration: InputDecoration(
         labelText: 'Tipo de Proveedor',
         prefixIcon: const Icon(Icons.category, color: _azul),

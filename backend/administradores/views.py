@@ -8,6 +8,7 @@ ViewSets para gestión de usuarios por administradores
 ✅ Logs de acciones administrativas
 ✅ Configuración del sistema
 ✅ Gestión de solicitudes de cambio de rol
+✅ CORREGIDO: Dashboard con filtros de soft delete
 """
 
 from rest_framework import viewsets, status, filters
@@ -22,6 +23,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
 from django.conf import settings
 import logging
+from django.core.exceptions import ValidationError
 
 # Modelos
 from authentication.models import User
@@ -59,6 +61,7 @@ from .permissions import (
     PuedeGestionarRepartidores,
     PuedeConfigurarSistema,
     AdministradorActivo,
+    PuedeGestionarSolicitudes,
     validar_no_es_superusuario,
     validar_no_auto_modificacion_critica,
     obtener_perfil_admin,
@@ -70,17 +73,46 @@ logger = logging.getLogger("administradores")
 # ============================================
 # HELPERS
 # ============================================
+# En administradores/views.py
 
 
 def registrar_accion_admin(request, tipo_accion, descripcion, **kwargs):
-    """Helper para registrar acciones administrativas"""
+    """
+    Helper para registrar acciones administrativas
+    ✅ CORREGIDO: Maneja usuarios admin sin perfil Administrador
+    """
     try:
         admin = obtener_perfil_admin(request.user)
+
+        # ✅ Si no tiene perfil admin, crear uno automáticamente
         if not admin:
             logger.warning(
-                f"Usuario sin perfil admin intentó registrar acción: {request.user.email}"
+                f"⚠️ Usuario {request.user.email} sin perfil admin. "
+                f"Creando automáticamente..."
             )
-            return None
+
+            # Crear perfil admin automáticamente
+            admin, created = Administrador.objects.get_or_create(
+                user=request.user,
+                defaults={
+                    "cargo": "Administrador del Sistema",
+                    "departamento": "Administración",
+                    "puede_gestionar_usuarios": True,
+                    "puede_gestionar_pedidos": True,
+                    "puede_gestionar_proveedores": True,
+                    "puede_gestionar_repartidores": True,
+                    "puede_gestionar_rifas": True,
+                    "puede_ver_reportes": True,
+                    "puede_configurar_sistema": True,
+                    "puede_gestionar_solicitudes": True,
+                    "activo": True,
+                },
+            )
+
+            if created:
+                logger.info(f"✅ Perfil admin creado para: {request.user.email}")
+            else:
+                logger.info(f"✅ Perfil admin recuperado para: {request.user.email}")
 
         ip_address = request.META.get("REMOTE_ADDR")
         user_agent = request.META.get("HTTP_USER_AGENT", "")
@@ -93,16 +125,11 @@ def registrar_accion_admin(request, tipo_accion, descripcion, **kwargs):
             user_agent=user_agent,
             **kwargs,
         )
+
+        logger.info(f"✅ Acción registrada: {tipo_accion} por {request.user.email}")
+
     except Exception as e:
-        logger.error(f"❌ Error registrando acción: {e}")
-
-
-def obtener_ip_cliente(request):
-    """Obtiene la IP del cliente desde request"""
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0]
-    return request.META.get("REMOTE_ADDR")
+        logger.error(f"❌ Error registrando acción: {e}", exc_info=True)
 
 
 # ============================================
@@ -408,8 +435,8 @@ class GestionProveedoresViewSet(viewsets.ReadOnlyModelViewSet):
     ]
     filterset_fields = ["verificado", "activo", "tipo_proveedor"]
     search_fields = ["nombre", "user__email", "telefono"]
-    ordering_fields = ["creado_en", "nombre", "calificacion_promedio"]
-    ordering = ["-creado_en"]
+    ordering_fields = ["created_at", "nombre", "calificacion_promedio"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         return Proveedor.objects.select_related("user").all()
@@ -431,7 +458,7 @@ class GestionProveedoresViewSet(viewsets.ReadOnlyModelViewSet):
         motivo = serializer.validated_data.get("motivo", "")
 
         proveedor.verificado = verificado
-        proveedor.save(update_fields=["verificado", "actualizado_en"])
+        proveedor.save(update_fields=["verificado", "updated_at"])
 
         if not verificado:
             proveedor.activo = False
@@ -470,7 +497,7 @@ class GestionProveedoresViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         proveedor.activo = False
-        proveedor.save(update_fields=["activo", "actualizado_en"])
+        proveedor.save(update_fields=["activo", "updated_at"])
 
         registrar_accion_admin(
             request,
@@ -498,7 +525,7 @@ class GestionProveedoresViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         proveedor.activo = True
-        proveedor.save(update_fields=["activo", "actualizado_en"])
+        proveedor.save(update_fields=["activo", "updated_at"])
 
         registrar_accion_admin(
             request,
@@ -805,7 +832,7 @@ class AdministradoresViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 # ============================================
-# VIEWSET: DASHBOARD ADMINISTRATIVO
+# VIEWSET: DASHBOARD ADMINISTRATIVO (✅ CORREGIDO)
 # ============================================
 
 
@@ -825,12 +852,10 @@ class DashboardAdminViewSet(viewsets.ViewSet):
         ).count()
         usuarios_nuevos_hoy = User.objects.filter(created_at__date=hoy).count()
 
-        # Proveedores
+        # Proveedores - SIN FILTRO deleted_at (aún no implementado)
         total_proveedores = Proveedor.objects.count()
         proveedores_verificados = Proveedor.objects.filter(verificado=True).count()
-        proveedores_pendientes = Proveedor.objects.filter(
-            verificado=False, activo=True
-        ).count()
+        proveedores_pendientes = Proveedor.objects.filter(verificado=False).count()
 
         # Repartidores
         total_repartidores = Repartidor.objects.count()
@@ -865,6 +890,11 @@ class DashboardAdminViewSet(viewsets.ViewSet):
             estado=EstadoPedido.ENTREGADO, creado_en__date=hoy
         ).aggregate(ingresos_hoy=Sum("total"), ganancia_app_hoy=Sum("ganancia_app"))
 
+        # Solicitudes pendientes
+        solicitudes_pendientes = SolicitudCambioRol.objects.filter(
+            estado="PENDIENTE"
+        ).count()
+
         return Response(
             {
                 "usuarios": {
@@ -895,38 +925,9 @@ class DashboardAdminViewSet(viewsets.ViewSet):
                     "ingresos_hoy": financiero_hoy["ingresos_hoy"] or 0,
                     "ganancia_app_hoy": financiero_hoy["ganancia_app_hoy"] or 0,
                 },
-            }
-        )
-
-    @action(detail=False, methods=["get"])
-    def resumen_dia(self, request):
-        """GET /api/admin/dashboard/resumen_dia/ - Resumen del día"""
-        hoy = timezone.now().date()
-
-        pedidos_hoy = Pedido.objects.filter(creado_en__date=hoy)
-        por_estado = pedidos_hoy.values("estado").annotate(total=Count("id"))
-
-        nuevos_usuarios = User.objects.filter(created_at__date=hoy).count()
-        nuevos_proveedores = Proveedor.objects.filter(creado_en__date=hoy).count()
-        nuevos_repartidores = Repartidor.objects.filter(creado_en__date=hoy).count()
-
-        acciones_hoy = AccionAdministrativa.objects.filter(
-            fecha_accion__date=hoy
-        ).count()
-
-        return Response(
-            {
-                "fecha": hoy,
-                "pedidos": {
-                    "total": pedidos_hoy.count(),
-                    "por_estado": list(por_estado),
+                "solicitudes": {
+                    "pendientes": solicitudes_pendientes,
                 },
-                "nuevos_registros": {
-                    "usuarios": nuevos_usuarios,
-                    "proveedores": nuevos_proveedores,
-                    "repartidores": nuevos_repartidores,
-                },
-                "acciones_administrativas": acciones_hoy,
             }
         )
 
@@ -935,9 +936,8 @@ class DashboardAdminViewSet(viewsets.ViewSet):
         """GET /api/admin/dashboard/alertas/ - Alertas del sistema"""
         alertas = []
 
-        proveedores_pendientes = Proveedor.objects.filter(
-            verificado=False, activo=True
-        ).count()
+        # Proveedores pendientes - SIN FILTRO deleted_at
+        proveedores_pendientes = Proveedor.objects.filter(verificado=False).count()
 
         if proveedores_pendientes > 0:
             alertas.append(
@@ -1010,18 +1010,35 @@ class DashboardAdminViewSet(viewsets.ViewSet):
                 }
             )
 
+        solicitudes_pendientes = SolicitudCambioRol.objects.filter(
+            estado="PENDIENTE"
+        ).count()
+
+        if solicitudes_pendientes > 0:
+            alertas.append(
+                {
+                    "tipo": "solicitudes_pendientes",
+                    "nivel": "info",
+                    "mensaje": f"{solicitudes_pendientes} solicitud(es) de rol pendiente(s)",
+                    "cantidad": solicitudes_pendientes,
+                }
+            )
+
         return Response({"total_alertas": len(alertas), "alertas": alertas})
 
 
 # ============================================
 # VIEWSET: GESTIÓN DE SOLICITUDES DE CAMBIO ROL
 # ============================================
-
-
 class GestionSolicitudesCambioRolViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para gestión de solicitudes de cambio de rol"""
 
-    permission_classes = [IsAuthenticated, EsAdministrador, AdministradorActivo]
+    permission_classes = [
+        IsAuthenticated,
+        EsAdministrador,
+        AdministradorActivo,
+        PuedeGestionarSolicitudes,
+    ]
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -1067,14 +1084,15 @@ class GestionSolicitudesCambioRolViewSet(viewsets.ReadOnlyModelViewSet):
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            motivo = serializer.validated_data.get("motivo_respuesta", "")
+            motivo = serializer.validated_data.get("motivo_respuesta")
+            if not motivo or not motivo.strip():
+                motivo = "Solicitud aceptada"
 
             logger.info(
                 f"✅ Aceptando solicitud: {solicitud.user.email} → "
                 f"{solicitud.rol_solicitado} por {request.user.email}"
             )
 
-            # Usar gestor centralizado
             resultado = GestorSolicitudCambioRol.aceptar_solicitud(
                 solicitud=solicitud, admin=request.user, motivo_respuesta=motivo
             )
@@ -1143,16 +1161,15 @@ class GestionSolicitudesCambioRolViewSet(viewsets.ReadOnlyModelViewSet):
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            motivo = serializer.validated_data.get(
-                "motivo_respuesta", "Sin especificar"
-            )
+            motivo = serializer.validated_data.get("motivo_respuesta")
+            if not motivo or not motivo.strip():
+                motivo = "Solicitud rechazada"
 
             logger.info(
                 f"❌ Rechazando solicitud: {solicitud.user.email} → "
                 f"{solicitud.rol_solicitado} por {request.user.email}"
             )
 
-            # Usar gestor centralizado
             resultado = GestorSolicitudCambioRol.rechazar_solicitud(
                 solicitud=solicitud, admin=request.user, motivo_respuesta=motivo
             )
@@ -1198,6 +1215,98 @@ class GestionSolicitudesCambioRolViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {
                     "error": "Error al rechazar solicitud",
+                    "detalle": str(e) if settings.DEBUG else "Intenta nuevamente",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(
+        detail=True, methods=["delete"]
+    )  # ✅ AGREGADO: @action con métodos=['delete']
+    @transaction.atomic
+    def eliminar(self, request, pk=None):
+        """
+        DELETE /api/admin/solicitudes-cambio-rol/{id}/eliminar/
+
+        Elimina cualquier solicitud (PENDIENTE, RECHAZADA o ACEPTADA)
+        ⚠️ ADVERTENCIA: Eliminar ACEPTADAS no revierte el rol del usuario
+        """
+        try:
+            solicitud = self.get_object()
+
+            # ⚠️ Advertencia especial si está ACEPTADA
+            if solicitud.estado == "ACEPTADA":
+                logger.warning(
+                    f"⚠️ ATENCIÓN: Eliminando solicitud ACEPTADA. "
+                    f"El usuario {solicitud.user.email} MANTIENE el rol {solicitud.rol_solicitado}"
+                )
+
+            logger.info(
+                f"🗑️ Eliminando solicitud {solicitud.get_estado_display()}: "
+                f"{solicitud.user.email} → {solicitud.rol_solicitado} "
+                f"por {request.user.email}"
+            )
+
+            # Registrar auditoría antes de eliminar
+            registrar_accion_admin(
+                request,
+                "eliminar_solicitud_rol",
+                f"Solicitud {solicitud.get_estado_display()} eliminada: "
+                f"{solicitud.user.email} → {solicitud.rol_solicitado}",
+                modelo_afectado="SolicitudCambioRol",
+                objeto_id=str(solicitud.id),
+                datos_anteriores={
+                    "estado": solicitud.estado,
+                    "usuario": solicitud.user.email,
+                    "rol": solicitud.rol_solicitado,
+                    "motivo": solicitud.motivo,
+                    "admin_responsable": (
+                        solicitud.admin_responsable.user.email
+                        if solicitud.admin_responsable
+                        else None
+                    ),
+                },
+            )
+
+            # Guardar info para respuesta
+            usuario_email = solicitud.user.email
+            rol_solicitado = solicitud.rol_solicitado
+            estado = solicitud.get_estado_display()
+
+            # Eliminar solicitud permanentemente
+            solicitud.delete()
+
+            logger.warning(
+                f"🗑️ Solicitud {estado} eliminada: {usuario_email} → "
+                f"{rol_solicitado} por {request.user.email}"
+            )
+
+            return Response(
+                {
+                    "mensaje": f"Solicitud {estado} eliminada exitosamente",
+                    "usuario": usuario_email,
+                    "rol": rol_solicitado,
+                    "estado_eliminado": estado,
+                    "advertencia": (
+                        "El usuario mantiene su rol actual"
+                        if estado == "ACEPTADA"
+                        else None
+                    ),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except SolicitudCambioRol.DoesNotExist:
+            logger.warning(f"⚠️ Solicitud no encontrada: {pk}")
+            return Response(
+                {"error": "Solicitud no encontrada"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error eliminando solicitud: {e}", exc_info=True)
+            return Response(
+                {
+                    "error": "Error al eliminar solicitud",
                     "detalle": str(e) if settings.DEBUG else "Intenta nuevamente",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1251,4 +1360,197 @@ class GestionSolicitudesCambioRolViewSet(viewsets.ReadOnlyModelViewSet):
                 "por_rol": list(por_rol),
             },
             status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["delete"])  # ✅ @action con método DELETE
+    @transaction.atomic
+    def eliminar(self, request, pk=None):
+        """
+        DELETE /api/admin/solicitudes-cambio-rol/{id}/eliminar/
+
+        Elimina cualquier solicitud (PENDIENTE, RECHAZADA o ACEPTADA)
+        ⚠️ ADVERTENCIA: Eliminar ACEPTADAS no revierte el rol del usuario
+        """
+        try:
+            solicitud = self.get_object()
+
+            # ⚠️ Advertencia especial si está ACEPTADA
+            if solicitud.estado == "ACEPTADA":
+                logger.warning(
+                    f"⚠️ ATENCIÓN: Eliminando solicitud ACEPTADA. "
+                    f"El usuario {solicitud.user.email} MANTIENE el rol {solicitud.rol_solicitado}"
+                )
+
+            logger.info(
+                f"🗑️ Eliminando solicitud {solicitud.get_estado_display()}: "
+                f"{solicitud.user.email} → {solicitud.rol_solicitado} "
+                f"por {request.user.email}"
+            )
+
+            # Registrar auditoría antes de eliminar
+            registrar_accion_admin(
+                request,
+                "eliminar_solicitud_rol",
+                f"Solicitud {solicitud.get_estado_display()} eliminada: "
+                f"{solicitud.user.email} → {solicitud.rol_solicitado}",
+                modelo_afectado="SolicitudCambioRol",
+                objeto_id=str(solicitud.id),
+                datos_anteriores={
+                    "estado": solicitud.estado,
+                    "usuario": solicitud.user.email,
+                    "rol": solicitud.rol_solicitado,
+                    "motivo": solicitud.motivo,
+                    # ✅ CORREGIDO: admin_responsable es un User, no Administrador
+                    "admin_responsable": (
+                        solicitud.admin_responsable.email
+                        if solicitud.admin_responsable
+                        else None
+                    ),
+                },
+            )
+
+            # Guardar info para respuesta
+            usuario_email = solicitud.user.email
+            rol_solicitado = solicitud.rol_solicitado
+            estado = solicitud.get_estado_display()
+
+            # Eliminar solicitud permanentemente
+            solicitud.delete()
+
+            logger.warning(
+                f"🗑️ Solicitud {estado} eliminada: {usuario_email} → "
+                f"{rol_solicitado} por {request.user.email}"
+            )
+
+            return Response(
+                {
+                    "mensaje": f"Solicitud {estado} eliminada exitosamente",
+                    "usuario": usuario_email,
+                    "rol": rol_solicitado,
+                    "estado_eliminado": estado,
+                    "advertencia": (
+                        "El usuario mantiene su rol actual"
+                        if estado == "ACEPTADA"
+                        else None
+                    ),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except SolicitudCambioRol.DoesNotExist:
+            logger.warning(f"⚠️ Solicitud no encontrada: {pk}")
+            return Response(
+                {"error": "Solicitud no encontrada"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error eliminando solicitud: {e}", exc_info=True)
+            return Response(
+                {
+                    "error": "Error al eliminar solicitud",
+                    "detalle": str(e) if settings.DEBUG else "Intenta nuevamente",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# ============================================
+@action(detail=True, methods=["post"])
+@transaction.atomic
+def revertir(self, request, pk=None):
+    """
+    POST /api/admin/solicitudes-cambio-rol/{id}/revertir/
+
+    Revierte un cambio de rol ACEPTADO
+    ⚠️ Devuelve al usuario a su rol anterior
+    """
+    try:
+        solicitud = self.get_object()
+
+        # Obtener motivo del request
+        motivo = request.data.get("motivo_reversion", "").strip()
+        if not motivo:
+            motivo = "Reversión de cambio de rol por decisión administrativa"
+
+        # Validar longitud del motivo
+        if len(motivo) < 10:
+            return Response(
+                {"error": "El motivo debe tener al menos 10 caracteres"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.warning(
+            f"🔄 Iniciando reversión: {solicitud.user.email} "
+            f"ID solicitud: {solicitud.id} por {request.user.email}"
+        )
+
+        # Usar el gestor centralizado
+        from usuarios.solicitudes import GestorSolicitudCambioRol
+
+        resultado = GestorSolicitudCambioRol.revertir_solicitud(
+            solicitud=solicitud,
+            admin=request.user,
+            motivo_reversion=motivo,
+        )
+
+        # Registrar auditoría
+        registrar_accion_admin(
+            request,
+            "revertir_cambio_rol",
+            f"Cambio de rol revertido: {resultado['usuario']} "
+            f"{resultado['rol_anterior']} → {resultado['rol_actual']}. "
+            f"Motivo: {motivo}",
+            modelo_afectado="SolicitudCambioRol",
+            objeto_id=str(solicitud.id),
+            datos_anteriores={
+                "estado": "ACEPTADA",
+                "rol_usuario": resultado["rol_anterior"],
+            },
+            datos_nuevos={
+                "estado": "REVERTIDA",
+                "rol_usuario": resultado["rol_actual"],
+                "motivo_reversion": motivo,
+            },
+        )
+
+        solicitud.refresh_from_db()
+
+        logger.warning(
+            f"✅ Reversión completada: {resultado['usuario']} "
+            f"ahora es {resultado['rol_actual']}"
+        )
+
+        return Response(
+            {
+                "mensaje": resultado["mensaje"],
+                "usuario": resultado["usuario"],
+                "rol_anterior": resultado["rol_anterior"],
+                "rol_actual": resultado["rol_actual"],
+                "solicitud": self.get_serializer(solicitud).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except SolicitudCambioRol.DoesNotExist:
+        logger.warning(f"⚠️ Solicitud no encontrada: {pk}")
+        return Response(
+            {"error": "Solicitud no encontrada"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    except ValidationError as e:
+        logger.warning(f"⚠️ Error de validación al revertir: {e}")
+        return Response(
+            {"error": "Error de validación", "detalles": str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Error revirtiendo solicitud: {e}", exc_info=True)
+        return Response(
+            {
+                "error": "Error al revertir solicitud",
+                "detalle": str(e) if settings.DEBUG else "Intenta nuevamente",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

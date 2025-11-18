@@ -437,14 +437,14 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
           _buildCampo(
             controller: _celularController,
             label: 'Celular',
-            hint: '09XXXXXXXX',
+            hint: '+593 98 765 4321',
             icono: Icons.phone_android_rounded,
             tipo: TextInputType.phone,
             maxLength: 10,
             validator: (v) {
               if (v!.isEmpty) return 'Requerido';
               if (!v.startsWith('09') || v.length != 10) {
-                return 'Formato: 09XXXXXXXX';
+                return 'Formato: ¡';
               }
               return null;
             },

@@ -1,16 +1,21 @@
 // lib/screens/user/perfil/pantalla_perfil.dart
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../theme/jp_theme.dart';
 import '../../../models/usuario.dart';
 import '../../../controllers/perfil_controller.dart';
+import '../../../providers/proveedor_roles.dart';
+import '../../../config/rutas.dart';
 import 'editar/pantalla_editar_informacion.dart';
 import 'editar/pantalla_editar_foto.dart';
 import 'editar/pantalla_agregar_direccion.dart';
+import '../../solicitudes_rol/pantalla_mis_solicitudes.dart';
+import '../../solicitudes_rol/pantalla_solicitar_rol.dart';
 
 /// 👤 PANTALLA DE PERFIL COMPLETA
 /// Muestra TODA la información del usuario disponible en el backend
-/// ✅ CORRECCIÓN: Manejo mejorado de direcciones
+/// ✅ CORRECCIÓN: Manejo mejorado de direcciones + Sistema de roles múltiples
 class PantallaPerfil extends StatefulWidget {
   const PantallaPerfil({super.key});
 
@@ -19,15 +24,15 @@ class PantallaPerfil extends StatefulWidget {
 }
 
 class _PantallaPerfilState extends State<PantallaPerfil> {
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
   // 🎮 CONTROLADOR
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
 
   late final PerfilController _controller;
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
   // 🔄 LIFECYCLE
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
 
   @override
   void initState() {
@@ -48,9 +53,9 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     super.dispose();
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 📥 CARGA DE DATOS
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 🔥 CARGA DE DATOS
+  // ══════════════════════════════════════════════════════════════════════════════
 
   Future<void> _cargarDatos() async {
     await _controller.cargarDatosCompletos();
@@ -60,9 +65,9 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     await _controller.cargarDatosCompletos(forzarRecarga: true);
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
   // 🎨 BUILD
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -107,6 +112,8 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
                   const SizedBox(height: 16),
                   _buildDirecciones(),
                   const SizedBox(height: 24),
+                  _buildCambioRol(),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -116,9 +123,9 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
   // 📱 APP BAR
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -162,9 +169,9 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
   // ⚠️ BANNER DE ADVERTENCIA (ERRORES PARCIALES)
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
 
   Widget _buildWarningBanner() {
     final List<String> errores = [];
@@ -227,9 +234,9 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
   // ❌ ESTADO DE ERROR TOTAL
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
 
   Widget _buildErrorState() {
     return Center(
@@ -301,9 +308,357 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 👤 HEADER DEL PERFIL
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 🎭 CAMBIO DE ROL
+  // ══════════════════════════════════════════════════════════════════════════════
+  Widget _buildCambioRol() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: JPCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header con icono
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: JPColors.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.workspace_premium,
+                    color: JPColors.accent,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('¿Quieres ser más?', style: JPTextStyles.h3),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Conviértete en Proveedor o Repartidor',
+                        style: JPTextStyles.caption,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Mensaje informativo
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: JPColors.info.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: JPColors.info.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.lightbulb_outline,
+                    color: JPColors.info,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Expande tu potencial. Elige ser Proveedor o Repartidor y comienza a ganar más.',
+                      style: JPTextStyles.caption.copyWith(
+                        color: JPColors.info.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Botón Participar
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _irASeleccionarRol,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: JPColors.accent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Text(
+                  'Participar',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Botón Ver mis solicitudes
+            TextButton.icon(
+              onPressed: _verMisSolicitudes,
+              icon: const Icon(Icons.history, size: 18),
+              label: const Text('Ver mis solicitudes'),
+              style: TextButton.styleFrom(foregroundColor: JPColors.primary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 🎬 ACCIONES DE CAMBIO DE ROL
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  void _irASeleccionarRol() async {
+    final resultado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => const PantallaSolicitarRol()),
+    );
+
+    if (resultado == true && mounted) {
+      _mostrarDialogoRolAceptado('SOLICITUD');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 🎉 DIÁLOGO DE ROL ACEPTADO
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  void _mostrarDialogoRolAceptado(String rol) {
+    // Si es una solicitud genérica
+    if (rol == 'SOLICITUD') {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: JPColors.success, size: 32),
+              SizedBox(width: 12),
+              Expanded(child: Text('¡Solicitud Enviada!')),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tu solicitud ha sido enviada exitosamente.',
+                style: JPTextStyles.body,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: JPColors.info.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: JPColors.info),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: JPColors.info,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Te notificaremos cuando el administrador revise tu solicitud.',
+                        style: JPTextStyles.caption.copyWith(
+                          color: JPColors.info,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Entendido'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _verMisSolicitudes();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: JPColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Ver Solicitudes'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Si es un rol específico (PROVEEDOR o REPARTIDOR)
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              rol == 'PROVEEDOR' ? Icons.store : Icons.delivery_dining,
+              color: JPColors.success,
+              size: 32,
+            ),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('¡Solicitud Enviada!')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Tu solicitud para ser ${rol == 'PROVEEDOR' ? 'Proveedor' : 'Repartidor'} ha sido enviada exitosamente.',
+              style: JPTextStyles.body,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: JPColors.info.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: JPColors.info),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.info_outline,
+                    color: JPColors.info,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Te notificaremos cuando el administrador revise tu solicitud.',
+                      style: JPTextStyles.caption.copyWith(
+                        color: JPColors.info,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Entendido'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _verMisSolicitudes();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: JPColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Ver Solicitudes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _verMisSolicitudes() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const PantallaMisSolicitudes()),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ✅ CAMBIAR AL ROL DESPUÉS DE ACEPTACIÓN DEL ADMIN
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /// Cambia al rol especificado y navega al panel correspondiente
+  /// ✅ CORREGIDO: Con verificación de mounted
+  Future<void> cambiarARolAprobado(String nuevoRol) async {
+    if (!mounted) return;
+
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Cambiando de panel...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      if (!mounted) return;
+
+      // Cambiar rol usando el provider
+      final proveedorRoles = context.read<ProveedorRoles>();
+      final exito = await proveedorRoles.cambiarARol(nuevoRol);
+
+      if (!mounted) return;
+
+      // Cerrar loading
+      Navigator.pop(context);
+
+      if (exito) {
+        // Navegar al panel correspondiente usando Rutas
+        await Rutas.irAHomePorRol(context, nuevoRol);
+
+        if (!mounted) return;
+
+        // Mostrar snackbar de confirmación
+        JPSnackbar.success(
+          context,
+          '¡Cambiado a ${nuevoRol == 'PROVEEDOR' ? 'Proveedor' : 'Repartidor'}!',
+        );
+      } else {
+        JPSnackbar.error(context, 'Error al cambiar de rol');
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      // Cerrar loading
+      Navigator.pop(context);
+
+      JPSnackbar.error(context, 'Error: ${e.toString()}');
+    }
+  }
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 💤 HEADER DEL PERFIL
+  // ══════════════════════════════════════════════════════════════════════════════
 
   Widget _buildHeader() {
     final perfil = _controller.perfil;
@@ -318,7 +673,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // ✅ CORREGIDO: Usar JPAvatar con showEditIcon
           JPAvatar(
             imageUrl: perfil.fotoPerfilUrl,
             radius: 60,
@@ -328,7 +682,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
           const SizedBox(height: 16),
 
-          // Nombre
           Text(
             perfil.usuarioNombre,
             style: JPTextStyles.h2.copyWith(color: Colors.white),
@@ -337,7 +690,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
           const SizedBox(height: 8),
 
-          // Email
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -352,7 +704,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
           const SizedBox(height: 16),
 
-          // Stats compactas
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -369,7 +720,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
             ],
           ),
 
-          // Badge VIP
           if (perfil.esClienteFrecuente) ...[
             const SizedBox(height: 12),
             const JPBadge(
@@ -420,9 +770,261 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 📋 INFORMACIÓN PERSONAL
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
+  // OTROS MÉTODOS (Info Personal, Notificaciones, Estadísticas, etc.)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // Nota: Los métodos _buildInfoPersonal(), _buildNotificaciones(),
+  // _buildEstadisticas(), _buildDirecciones() y sus helpers permanecen igual
+  // Solo los incluiré si los necesitas, para no hacer el código muy largo.
+  // Por ahora, usa tu código actual para esos métodos.
+
+  // ACCIONES SIMPLIFICADAS
+  void _editarFoto() async {
+    final resultado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            PantallaEditarFoto(fotoActual: _controller.perfil?.fotoPerfilUrl),
+      ),
+    );
+
+    if (resultado == true) {
+      _recargarDatos();
+    }
+  }
+
+  void _editarPerfil() async {
+    if (_controller.perfil == null) return;
+
+    final resultado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            PantallaEditarInformacion(perfil: _controller.perfil!),
+      ),
+    );
+
+    if (resultado == true) {
+      _recargarDatos();
+    }
+  }
+
+  void _agregarDireccion() async {
+    final resultado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => const PantallaAgregarDireccion()),
+    );
+
+    await _controller.recargarDirecciones();
+
+    if (mounted) {
+      setState(() {});
+    }
+
+    if (resultado == true && mounted) {
+      debugPrint('✅ Operación completada exitosamente');
+    }
+  }
+
+  void _verDetalleDireccion(DireccionModel direccion) {
+    JPSnackbar.show(context, 'Ver detalle: ${direccion.etiqueta}');
+  }
+
+  void _accionDireccion(String accion, DireccionModel direccion) async {
+    switch (accion) {
+      case 'predeterminada':
+        final exito = await _controller.establecerDireccionPredeterminada(
+          direccion.id,
+        );
+
+        if (!mounted) return;
+
+        if (exito) {
+          JPSnackbar.success(context, 'Dirección predeterminada actualizada');
+          setState(() {});
+        } else {
+          JPSnackbar.error(context, 'Error al actualizar');
+        }
+        break;
+
+      case 'editar':
+        final resultado = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                PantallaAgregarDireccion(direccion: direccion),
+          ),
+        );
+
+        if (resultado == true) {
+          await _controller.recargarDirecciones();
+
+          if (mounted) {
+            setState(() {});
+          }
+        }
+        break;
+
+      case 'eliminar':
+        _confirmarEliminarDireccion(direccion);
+        break;
+    }
+  }
+
+  void _confirmarEliminarDireccion(DireccionModel direccion) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar dirección'),
+        content: Text('¿Estás seguro de eliminar "${direccion.etiqueta}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+
+              final exito = await _controller.eliminarDireccion(direccion.id);
+
+              if (!mounted) return;
+
+              if (exito) {
+                JPSnackbar.success(context, 'Dirección eliminada');
+                setState(() {});
+              } else {
+                JPSnackbar.error(context, 'Error al eliminar');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: JPColors.error),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _cambiarNotificacionPedidos(bool value) async {
+    final exito = await _controller.actualizarNotificaciones(
+      notificacionesPedido: value,
+    );
+
+    if (!mounted) return;
+
+    if (exito) {
+      JPSnackbar.success(
+        context,
+        value
+            ? 'Notificaciones de pedidos activadas'
+            : 'Notificaciones de pedidos desactivadas',
+      );
+    } else {
+      JPSnackbar.error(context, 'Error al actualizar notificaciones');
+    }
+  }
+
+  void _cambiarNotificacionPromociones(bool value) async {
+    final exito = await _controller.actualizarNotificaciones(
+      notificacionesPromociones: value,
+    );
+
+    if (!mounted) return;
+
+    if (exito) {
+      JPSnackbar.success(
+        context,
+        value
+            ? 'Notificaciones de promociones activadas'
+            : 'Notificaciones de promociones desactivadas',
+      );
+    } else {
+      JPSnackbar.error(context, 'Error al actualizar notificaciones');
+    }
+  }
+
+  void _confirmarCerrarSesion() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.logout, color: JPColors.error),
+            SizedBox(width: 12),
+            Text('Cerrar Sesión'),
+          ],
+        ),
+        content: const Text(
+          '¿Estás seguro de que deseas cerrar sesión?',
+          style: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _cerrarSesion();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: JPColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Cerrar Sesión'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _cerrarSesion() async {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Cerrando sesión...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
+
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+
+      JPSnackbar.show(context, 'Sesión cerrada exitosamente');
+    } catch (e) {
+      if (!mounted) return;
+
+      Navigator.pop(context);
+
+      JPSnackbar.error(context, 'Error al cerrar sesión: ${e.toString()}');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 📋 INFO PERSONAL, NOTIFICACIONES, ESTADÍSTICAS, DIRECCIONES
+  // ══════════════════════════════════════════════════════════════════════════════
 
   Widget _buildInfoPersonal() {
     final perfil = _controller.perfil;
@@ -447,7 +1049,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
             ),
             const Divider(height: 24),
 
-            // Teléfono
             _buildInfoRow(
               icon: Icons.phone,
               label: 'Teléfono',
@@ -457,7 +1058,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
             const SizedBox(height: 16),
 
-            // Fecha de nacimiento
             _buildInfoRow(
               icon: Icons.cake,
               label: 'Fecha de nacimiento',
@@ -467,7 +1067,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
               hasValue: perfil.fechaNacimiento != null,
             ),
 
-            // Edad
             if (perfil.edad != null) ...[
               const SizedBox(height: 8),
               Padding(
@@ -476,7 +1075,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
               ),
             ],
 
-            // Mensaje de completitud
             if (!_controller.perfilCompleto) ...[
               const SizedBox(height: 16),
               Container(
@@ -544,9 +1142,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
       ],
     );
   }
-  // ══════════════════════════════════════════════════════════════════════════
-  // 🔔 NOTIFICACIONES
-  // ══════════════════════════════════════════════════════════════════════════
 
   Widget _buildNotificaciones() {
     final perfil = _controller.perfil;
@@ -561,7 +1156,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
             Text('Notificaciones', style: JPTextStyles.h3),
             const Divider(height: 24),
 
-            // Estado de notificaciones push
             if (perfil.puedeRecibirNotificaciones)
               Container(
                 padding: const EdgeInsets.all(12),
@@ -619,7 +1213,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
                 ),
               ),
 
-            // Switch de notificaciones de pedidos
             _buildNotificationSwitch(
               icon: Icons.shopping_bag,
               title: 'Notificaciones de pedidos',
@@ -630,7 +1223,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
             const SizedBox(height: 16),
 
-            // Switch de notificaciones de promociones
             _buildNotificationSwitch(
               icon: Icons.local_offer,
               title: 'Notificaciones de promociones',
@@ -682,10 +1274,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 📊 ESTADÍSTICAS
-  // ══════════════════════════════════════════════════════════════════════════
-
   Widget _buildEstadisticas() {
     final estadisticas = _controller.estadisticas;
     if (estadisticas == null) return const SizedBox.shrink();
@@ -699,7 +1287,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
             Text('Estadísticas', style: JPTextStyles.h3),
             const Divider(height: 24),
 
-            // Nivel de cliente
             _buildStatRow(
               icon: Icons.workspace_premium,
               label: 'Nivel',
@@ -709,7 +1296,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
             const SizedBox(height: 16),
 
-            // Pedidos este mes
             _buildStatRow(
               icon: Icons.calendar_today,
               label: 'Pedidos este mes',
@@ -719,7 +1305,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
             const SizedBox(height: 16),
 
-            // Rifa mensual
             _buildRifaCard(),
           ],
         ),
@@ -811,7 +1396,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
           const SizedBox(height: 12),
 
-          // Barra de progreso
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
@@ -829,10 +1413,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
       ),
     );
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // 📍 DIRECCIONES - ✅ COMPLETAMENTE CORREGIDO
-  // ══════════════════════════════════════════════════════════════════════════
 
   Widget _buildDirecciones() {
     return Padding(
@@ -854,7 +1434,6 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
           const SizedBox(height: 12),
 
-          // Lista de direcciones
           if (_controller.isLoadingDirecciones)
             const Center(
               child: Padding(
@@ -1049,330 +1628,5 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
         ],
       ),
     );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // 🎬 ACCIONES - ✅ MÉTODOS SIMPLIFICADOS Y CORREGIDOS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  void _editarFoto() async {
-    final resultado = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            PantallaEditarFoto(fotoActual: _controller.perfil?.fotoPerfilUrl),
-      ),
-    );
-
-    if (resultado == true) {
-      _recargarDatos();
-    }
-  }
-
-  void _editarPerfil() async {
-    if (_controller.perfil == null) return;
-
-    final resultado = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            PantallaEditarInformacion(perfil: _controller.perfil!),
-      ),
-    );
-
-    if (resultado == true) {
-      _recargarDatos();
-    }
-  }
-
-  /// ✅ CORRECCIÓN CRÍTICA: Método completamente simplificado
-  void _agregarDireccion() async {
-    debugPrint(
-      '═══════════════════════════════════════════════════════════════',
-    );
-    debugPrint('🚀 Navegando a agregar dirección...');
-    debugPrint(
-      '═══════════════════════════════════════════════════════════════',
-    );
-
-    final resultado = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (context) => const PantallaAgregarDireccion()),
-    );
-
-    debugPrint(
-      '───────────────────────────────────────────────────────────────',
-    );
-    debugPrint('🔙 Resultado de navegación: $resultado');
-    debugPrint(
-      '───────────────────────────────────────────────────────────────',
-    );
-
-    // ✅ CRÍTICO: Recargar SIEMPRE, sin importar el resultado
-    // Esto asegura que la UI se actualice incluso si hubo actualización
-    debugPrint('♻️ Recargando direcciones...');
-    await _controller.recargarDirecciones();
-
-    debugPrint(
-      '───────────────────────────────────────────────────────────────',
-    );
-    debugPrint('📊 Estado después de recargar:');
-    debugPrint(
-      '   Direcciones en memoria: ${_controller.direcciones?.length ?? 0}',
-    );
-    debugPrint('   Cargando: ${_controller.isLoadingDirecciones}');
-    debugPrint('   Error: ${_controller.errorDirecciones ?? "ninguno"}');
-
-    if (_controller.direcciones != null &&
-        _controller.direcciones!.isNotEmpty) {
-      debugPrint('📋 Lista actualizada:');
-      for (var dir in _controller.direcciones!) {
-        debugPrint('   - ${dir.etiqueta}: ${dir.direccion}');
-      }
-    }
-    debugPrint(
-      '═══════════════════════════════════════════════════════════════',
-    );
-
-    // ✅ CRÍTICO: Forzar actualización de UI
-    if (mounted) {
-      setState(() {
-        debugPrint('🔄 setState() ejecutado - UI actualizada');
-      });
-    }
-
-    // ✅ OPCIONAL: Mostrar mensaje de confirmación si resultado es true
-    if (resultado == true && mounted) {
-      // Ya se muestra el snackbar en pantalla_agregar_direccion
-      // Este es solo para debug
-      debugPrint('✅ Operación completada exitosamente');
-    }
-  }
-
-  void _verDetalleDireccion(DireccionModel direccion) {
-    JPSnackbar.show(context, 'Ver detalle: ${direccion.etiqueta}');
-  }
-
-  /// ✅ CORREGIDO: Manejo más robusto de acciones
-  void _accionDireccion(String accion, DireccionModel direccion) async {
-    switch (accion) {
-      // 🌟 MARCAR COMO PREDETERMINADA
-      case 'predeterminada':
-        final exito = await _controller.establecerDireccionPredeterminada(
-          direccion.id,
-        );
-
-        if (!mounted) return;
-
-        if (exito) {
-          JPSnackbar.success(context, 'Dirección predeterminada actualizada');
-          // ✅ El controlador ya actualiza su estado interno, solo refrescar UI
-          setState(() {});
-        } else {
-          JPSnackbar.error(context, 'Error al actualizar');
-        }
-        break;
-
-      // ✏️ EDITAR DIRECCIÓN
-      case 'editar':
-        final resultado = await Navigator.push<bool>(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                PantallaAgregarDireccion(direccion: direccion),
-          ),
-        );
-
-        if (resultado == true) {
-          debugPrint('✅ Dirección editada, recargando...');
-          await _controller.recargarDirecciones();
-
-          if (mounted) {
-            setState(() {});
-          }
-        }
-        break;
-
-      // 🗑️ ELIMINAR DIRECCIÓN
-      case 'eliminar':
-        _confirmarEliminarDireccion(direccion);
-        break;
-    }
-  }
-
-  /// ✅ CORREGIDO: Confirmación mejorada
-  void _confirmarEliminarDireccion(DireccionModel direccion) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Eliminar dirección'),
-        content: Text('¿Estás seguro de eliminar "${direccion.etiqueta}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-
-              debugPrint('🗑️ Eliminando dirección: ${direccion.id}');
-
-              final exito = await _controller.eliminarDireccion(direccion.id);
-
-              debugPrint('   Resultado: ${exito ? "✅ Éxito" : "❌ Error"}');
-              debugPrint(
-                '   Direcciones restantes: ${_controller.direcciones?.length ?? 0}',
-              );
-
-              if (!mounted) return;
-
-              if (exito) {
-                JPSnackbar.success(context, 'Dirección eliminada');
-                // ✅ El controlador ya actualizó su lista, solo refrescar UI
-                setState(() {});
-              } else {
-                JPSnackbar.error(context, 'Error al eliminar');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: JPColors.error),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _cambiarNotificacionPedidos(bool value) async {
-    final exito = await _controller.actualizarNotificaciones(
-      notificacionesPedido: value,
-    );
-
-    if (!mounted) return;
-
-    if (exito) {
-      JPSnackbar.success(
-        context,
-        value
-            ? 'Notificaciones de pedidos activadas'
-            : 'Notificaciones de pedidos desactivadas',
-      );
-    } else {
-      JPSnackbar.error(context, 'Error al actualizar notificaciones');
-    }
-  }
-
-  void _cambiarNotificacionPromociones(bool value) async {
-    final exito = await _controller.actualizarNotificaciones(
-      notificacionesPromociones: value,
-    );
-
-    if (!mounted) return;
-
-    if (exito) {
-      JPSnackbar.success(
-        context,
-        value
-            ? 'Notificaciones de promociones activadas'
-            : 'Notificaciones de promociones desactivadas',
-      );
-    } else {
-      JPSnackbar.error(context, 'Error al actualizar notificaciones');
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // 🚪 CERRAR SESIÓN
-  // ══════════════════════════════════════════════════════════════════════════
-
-  void _confirmarCerrarSesion() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.logout, color: JPColors.error),
-            SizedBox(width: 12),
-            Text('Cerrar Sesión'),
-          ],
-        ),
-        content: const Text(
-          '¿Estás seguro de que deseas cerrar sesión?',
-          style: TextStyle(fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _cerrarSesion();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: JPColors.error,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Cerrar Sesión'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _cerrarSesion() async {
-    // Mostrar indicador de carga
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Cerrando sesión...'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-
-    try {
-      // Aquí deberías llamar a tu servicio de autenticación
-      // Ejemplo: await AuthService.logout();
-
-      // Simular delay de logout
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-
-      // Cerrar el diálogo de carga
-      Navigator.pop(context);
-
-      // Navegar a la pantalla de login y limpiar el stack de navegación
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/login', // Cambia esto por tu ruta de login
-        (route) => false,
-      );
-
-      // Mostrar mensaje de confirmación
-      JPSnackbar.show(context, 'Sesión cerrada exitosamente');
-    } catch (e) {
-      if (!mounted) return;
-
-      // Cerrar el diálogo de carga
-      Navigator.pop(context);
-
-      // Mostrar error
-      JPSnackbar.error(context, 'Error al cerrar sesión: ${e.toString()}');
-    }
   }
 }

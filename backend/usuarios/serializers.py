@@ -4,7 +4,13 @@
 from rest_framework import serializers
 from django.db import transaction
 from authentication.models import User
-from .models import Perfil, DireccionFavorita, MetodoPago, UbicacionUsuario
+from .models import (
+    Perfil,
+    DireccionFavorita,
+    MetodoPago,
+    UbicacionUsuario,
+    SolicitudCambioRol,
+)
 import re
 import os
 import logging
@@ -1106,30 +1112,44 @@ class CrearSolicitudCambioRolSerializer(serializers.Serializer):
 
 
 class SolicitudCambioRolDetalleSerializer(serializers.ModelSerializer):
-    """Serializer detallado para una solicitud"""
+    """Serializer detallado para ver/gestionar solicitudes"""
 
+    usuario_email = serializers.CharField(source="user.email", read_only=True)
+    usuario_nombre = serializers.SerializerMethodField()
     rol_solicitado_display = serializers.CharField(
         source="get_rol_solicitado_display", read_only=True
     )
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
-    usuario_email = serializers.EmailField(source="user.email", read_only=True)
-    usuario_nombre = serializers.CharField(source="user.get_full_name", read_only=True)
-    admin_email = serializers.EmailField(
+    dias_pendiente = serializers.IntegerField(read_only=True)
+    admin_email = serializers.CharField(
         source="admin_responsable.email", read_only=True, allow_null=True
     )
-    dias_pendiente = serializers.IntegerField(read_only=True)
+
+    # ✅ Datos del usuario
+    usuario = serializers.SerializerMethodField()
 
     class Meta:
-        from .models import SolicitudCambioRol
-
         model = SolicitudCambioRol
         fields = [
             "id",
+            "usuario",
             "usuario_email",
             "usuario_nombre",
             "rol_solicitado",
             "rol_solicitado_display",
             "motivo",
+            # ✅ DATOS ESPECÍFICOS DE REPARTIDOR
+            "cedula_identidad",
+            "tipo_vehiculo",
+            "zona_cobertura",
+            "disponibilidad",
+            # ✅ DATOS ESPECÍFICOS DE PROVEEDOR
+            "ruc",
+            "nombre_comercial",
+            "tipo_negocio",
+            "descripcion_negocio",
+            "horario_apertura",
+            "horario_cierre",
             "estado",
             "estado_display",
             "creado_en",
@@ -1138,19 +1158,28 @@ class SolicitudCambioRolDetalleSerializer(serializers.ModelSerializer):
             "admin_email",
             "motivo_respuesta",
         ]
-        read_only_fields = fields
+
+    def get_usuario_nombre(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+
+    def get_usuario(self, obj):
+        return {
+            "id": obj.user.id,
+            "email": obj.user.email,
+            "nombre_completo": obj.user.get_full_name(),
+            "username": obj.user.username,
+        }
 
 
 class ResponderSolicitudCambioRolSerializer(serializers.Serializer):
     """Serializer para que admin responda solicitud"""
 
-    aceptada = serializers.BooleanField(label="¿Aceptar solicitud?")
     motivo_respuesta = serializers.CharField(
         max_length=500,
         required=False,
         allow_blank=True,
         label="Motivo de la respuesta (opcional)",
-        help_text="Explicación al usuario",
+        help_text="Explicación al usuario. Si no proporcionas, se genera mensaje automático",
     )
 
     def validate_motivo_respuesta(self, value):
@@ -1158,25 +1187,27 @@ class ResponderSolicitudCambioRolSerializer(serializers.Serializer):
         if value:
             value = value.strip()
 
+            if len(value) < 5:
+                raise serializers.ValidationError(
+                    "El motivo debe tener al menos 5 caracteres"
+                )
+
             if len(value) > 500:
                 raise serializers.ValidationError(
                     "El motivo no puede exceder 500 caracteres"
                 )
 
-        return value
+            return value
+
+        # Si viene vacío o None, retornar None
+        return None
 
     def validate(self, data):
         """Validaciones adicionales"""
-        aceptada = data.get("aceptada")
-        motivo = data.get("motivo_respuesta", "").strip()
+        motivo = data.get("motivo_respuesta")
 
-        # Si se rechaza, el motivo es altamente recomendado
-        if not aceptada and not motivo:
-            raise serializers.ValidationError(
-                {
-                    "motivo_respuesta": "Se recomienda proporcionar un motivo cuando se rechaza"
-                }
-            )
+        # El motivo es completamente opcional en validación
+        # Se generará automáticamente en la vista si es necesario
 
         return data
 
@@ -1276,22 +1307,16 @@ class CrearSolicitudProveedorSerializer(serializers.Serializer):
     # ================================================
 
     def validate_ruc(self, value):
-        """Valida RUC: 13 dígitos exactos"""
-        value = value.strip()
+        # ❌ ELIMINAR O COMENTAR ESTA VALIDACIÓN
+        # if Proveedor.objects.filter(ruc=value).exists():
+        #     raise serializers.ValidationError("Este RUC ya está registrado")
+
+        # ✅ Solo validar formato
+        if not value or len(value) != 13:
+            raise serializers.ValidationError("RUC debe tener 13 dígitos")
 
         if not value.isdigit():
-            raise serializers.ValidationError(
-                "❌ RUC solo debe contener números (sin guiones)"
-            )
-
-        # Verificar que no exista en Proveedor
-        try:
-            from proveedores.models import Proveedor
-
-            if Proveedor.objects.filter(ruc=value).exists():
-                raise serializers.ValidationError("❌ Este RUC ya está registrado")
-        except ImportError:
-            pass
+            raise serializers.ValidationError("RUC solo debe contener números")
 
         return value
 

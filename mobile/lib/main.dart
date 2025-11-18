@@ -5,13 +5,15 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
-// Configuración base
+// Configuración baseF
 import './config/rutas.dart';
 import './config/api_config.dart';
 import './services/servicio_notificacion.dart';
 import './services/ubicacion_service.dart';
 import './services/auth_service.dart';
 import './apis/subapis/http_client.dart';
+// Providers
+import './providers/proveedor_roles.dart';
 // Controllers
 import './screens/supplier/controllers/supplier_controller.dart';
 
@@ -224,7 +226,9 @@ class MyApp extends StatelessWidget {
       providers: [
         // ✅ SUPPLIER CONTROLLER - disponible globalmente
         ChangeNotifierProvider(create: (_) => SupplierController()),
-        // Aquí puedes agregar más providers según necesites
+
+        // ✅ PROVEEDOR DE ROLES - gestión de roles múltiples
+        ChangeNotifierProvider(create: (_) => ProveedorRoles()..inicializar()),
       ],
       child: MaterialApp(
         title: 'JP Express',

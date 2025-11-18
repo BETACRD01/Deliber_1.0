@@ -199,6 +199,8 @@ class AccionAdministrativa(models.Model):
         ("configurar_sistema", "Configurar Sistema"),
         ("notificacion_masiva", "Notificación Masiva"),
         ("exportar_datos", "Exportar Datos"),
+        # Cambios de Rol
+        ("revertir_cambio_rol", "Revertir Cambio de Rol"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
