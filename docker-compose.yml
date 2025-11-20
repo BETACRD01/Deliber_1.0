@@ -11,7 +11,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-deliber_db}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d:ro
@@ -27,8 +27,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 512M
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          memory: 256M
+    shm_size: 256mb
 
   # ==========================================
   # REDIS PARA CACHÉ Y CELERY
@@ -39,9 +42,12 @@ services:
     command: >
       redis-server
       --appendonly yes
+      --appendfsync everysec
       --requirepass ${REDIS_PASSWORD:-redis123}
-      --maxmemory 256mb
+      --maxmemory 512mb
       --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --tcp-backlog 511
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -58,8 +64,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 128M
 
   # ==========================================
   # BACKEND DJANGO
@@ -69,6 +77,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: final
+      cache_from:
+        - deliber_backend:latest
     container_name: deliber_backend
     command: runserver
     env_file:
@@ -76,13 +86,15 @@ services:
     environment:
       - DEBUG=${DEBUG:-True}
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ./backend:/app:delegated
+      - ./backend:/app:cached
       - media_data:/app/media
       - static_data:/app/staticfiles
       - ./backend/firebase-credentials.json:/app/firebase-credentials.json:ro
+      - backend_cache:/app/.cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,7 +113,9 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 1G
+          memory: 2G
+        reservations:
+          memory: 512M
 
   # ==========================================
   # CELERY WORKER
@@ -111,16 +125,21 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: final
+      cache_from:
+        - deliber_backend:latest
     container_name: deliber_celery_worker
     command: celery_worker
     env_file:
       - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - C_FORCE_ROOT=true
     volumes:
-      - ./backend:/app:delegated
+      - ./backend:/app:cached
       - media_data:/app/media
       - ./backend/firebase-credentials.json:/app/firebase-credentials.json:ro
+      - celery_cache:/app/.cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,8 +153,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'
-          memory: 768M
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          memory: 256M
 
   # ==========================================
   # CELERY BEAT (TAREAS PROGRAMADAS)
@@ -145,14 +166,18 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: final
+      cache_from:
+        - deliber_backend:latest
     container_name: deliber_celery_beat
     command: celery_beat
     env_file:
       - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
     volumes:
-      - ./backend:/app:delegated
+      - ./backend:/app:cached
+      - celery_beat_data:/app/celerybeat-data
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,15 +185,12 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-
-    # 🔥 HEALTHCHECK CORREGIDO
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-redis123} ping || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
-
+      test: ["CMD-SHELL", "ps aux | grep 'celery beat' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - deliber_network
     restart: unless-stopped
@@ -176,7 +198,9 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
+        reservations:
+          memory: 128M
 
   # ==========================================
   # FLOWER (MONITOREO DE CELERY)
@@ -186,6 +210,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: final
+      cache_from:
+        - deliber_backend:latest
     container_name: deliber_flower
     command: flower
     env_file:
@@ -197,7 +223,7 @@ services:
     ports:
       - "${FLOWER_PORT:-5555}:5555"
     volumes:
-      - ./backend:/app:delegated
+      - ./backend:/app:cached
     depends_on:
       - redis
       - celery_worker
@@ -210,7 +236,9 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
+        reservations:
+          memory: 128M
 
   # ==========================================
   # ADMINER (GESTIÓN DE BASE DE DATOS)
@@ -231,6 +259,11 @@ services:
     restart: unless-stopped
     profiles:
       - dev
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
 # ==========================================
 # VOLÚMENES
@@ -248,6 +281,15 @@ volumes:
   static_data:
     driver: local
     name: deliber_static_data
+  backend_cache:
+    driver: local
+    name: deliber_backend_cache
+  celery_cache:
+    driver: local
+    name: deliber_celery_cache
+  celery_beat_data:
+    driver: local
+    name: deliber_celery_beat_data
 
 # ==========================================
 # RED
@@ -256,3 +298,5 @@ networks:
   deliber_network:
     driver: bridge
     name: deliber_network
+    driver_opts:
+      com.docker.network.driver.mtu: 1500

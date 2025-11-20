@@ -7,6 +7,7 @@ from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from datetime import date, timedelta
+from phonenumber_field.modelfields import PhoneNumberField
 import re
 import logging
 
@@ -59,16 +60,12 @@ class User(AbstractUser):
     # ==========================================
     # CELULAR
     # ==========================================
-    celular = models.CharField(
-        max_length=10,
-        validators=[
-            RegexValidator(
-                regex=r'^09\d{8}$',
-                message='El celular debe comenzar con 09 y tener 10 dígitos'
-            )
-        ],
+    celular = PhoneNumberField(
+        region='EC',  # Región por defecto si no ponen el +
+        blank=True, 
+        null=True,
         verbose_name='Número de celular',
-        help_text='Formato: 09XXXXXXXX (Ecuador)'
+        help_text='Formato internacional (ej: +593991234567 o +52...)'
     )
 
     # ==========================================

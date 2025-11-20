@@ -11,6 +11,7 @@ import '../helpers/api_exception.dart';
 
 /// Cliente HTTP con AUTO-REFRESH INTELIGENTE de tokens
 /// ✅ OPTIMIZADO: Evita cargas redundantes de tokens
+/// ✅ CORREGIDO: Métodos públicos para registro/login sin autenticación
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
@@ -27,10 +28,6 @@ class ApiClient {
     ),
   );
 
-  // ════════════════════════════════════════════════════════════════════════
-  // ✅ NUEVAS VARIABLES PARA GESTIÓN DE EXPIRACIÓN
-  // ════════════════════════════════════════════════════════════════════════
-
   String? _accessToken;
   String? _refreshToken;
   String? _userRole;
@@ -40,20 +37,12 @@ class ApiClient {
   Completer<bool>? _refreshCompleter;
   bool _tokensLoaded = false;
 
-  // ════════════════════════════════════════════════════════════════════════
-  // CONSTANTES
-  // ════════════════════════════════════════════════════════════════════════
-
   static const String _keyAccessToken = 'jp_access_token';
   static const String _keyRefreshToken = 'jp_refresh_token';
   static const String _keyTokenTimestamp = 'jp_token_timestamp';
   static const String _keyTokenExpiry = 'jp_token_expiry';
   static const String _keyUserRole = 'jp_user_role';
   static const String _keyUserId = 'jp_user_id';
-
-  // ════════════════════════════════════════════════════════════════════════
-  // GETTERS
-  // ════════════════════════════════════════════════════════════════════════
 
   bool get isAuthenticated => _accessToken != null;
   String? get accessToken => _accessToken;
@@ -72,9 +61,9 @@ class ApiClient {
     );
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // ✅ TOKEN MANAGEMENT OPTIMIZADO
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOKEN MANAGEMENT
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> saveTokens(
     String access,
@@ -195,10 +184,6 @@ class ApiClient {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // VALIDACIÓN DE EXPIRACIÓN
-  // ════════════════════════════════════════════════════════════════════════
-
   bool _isTokenExpiredOrExpiring() {
     if (_tokenExpiry == null) {
       _log('⚠️ No hay fecha de expiración guardada');
@@ -304,19 +289,20 @@ class ApiClient {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // ✅ REQUEST WITH RETRY Y AUTO-REFRESH
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // ✅ REQUEST WITH RETRY
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<http.Response> _requestWithRetry(
     Future<http.Response> Function() request, {
     int maxRetries = 3,
     int retryCount = 0,
+    bool requiresAuth = true,
   }) async {
     try {
       final response = await request().timeout(ApiConfig.receiveTimeout);
 
-      if (response.statusCode == 401 && retryCount == 0) {
+      if (response.statusCode == 401 && retryCount == 0 && requiresAuth) {
         _log('⚠️ 401 recibido - intentando refresh automático...');
         final refreshed = await refreshAccessToken();
 
@@ -326,6 +312,7 @@ class ApiClient {
             request,
             maxRetries: maxRetries,
             retryCount: 1,
+            requiresAuth: requiresAuth,
           );
         }
 
@@ -351,6 +338,7 @@ class ApiClient {
           request,
           maxRetries: maxRetries,
           retryCount: retryCount + 1,
+          requiresAuth: requiresAuth,
         );
       }
       throw ApiException(
@@ -370,6 +358,7 @@ class ApiClient {
           request,
           maxRetries: maxRetries,
           retryCount: retryCount + 1,
+          requiresAuth: requiresAuth,
         );
       }
       throw ApiException(
@@ -389,21 +378,25 @@ class ApiClient {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
   // HEADERS
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
 
-  Map<String, String> _getHeaders() {
-    _log(
-      '🔐 Token actual: ${_accessToken != null ? "PRESENTE (${_accessToken!.substring(0, 20)}...)" : "AUSENTE"}',
-    );
-
-    return {
+  Map<String, String> _getHeaders({bool includeAuth = true}) {
+    final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-API-Key': ApiConfig.apiKeyMobile,
-      if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
     };
+
+    if (includeAuth && _accessToken != null) {
+      headers['Authorization'] = 'Bearer $_accessToken';
+      _log('🔐 Token incluido en headers');
+    } else {
+      _log('🔓 Petición sin autenticación');
+    }
+
+    return headers;
   }
 
   Map<String, String> _getMultipartHeaders() {
@@ -414,9 +407,42 @@ class ApiClient {
     };
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // ✅ HTTP METHODS OPTIMIZADOS
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // ✅ MÉTODOS PÚBLICOS (SIN AUTENTICACIÓN) - PARA REGISTRO/LOGIN
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// POST público (sin token) - Para registro, login, recuperación
+  Future<Map<String, dynamic>> postPublic(
+    String endpoint,
+    Map<String, dynamic> body,
+  ) async {
+    _log('➡️ POST PUBLIC: $endpoint');
+    _log('📦 Body: ${json.encode(body)}');
+    
+    final response = await _requestWithRetry(
+      () => http.post(
+        Uri.parse(endpoint),
+        headers: _getHeaders(includeAuth: false),
+        body: json.encode(body),
+      ),
+      requiresAuth: false,
+    );
+    return _handleResponse(response);
+  }
+
+  /// GET público (sin token)
+  Future<Map<String, dynamic>> getPublic(String endpoint) async {
+    _log('➡️ GET PUBLIC: $endpoint');
+    final response = await _requestWithRetry(
+      () => http.get(Uri.parse(endpoint), headers: _getHeaders(includeAuth: false)),
+      requiresAuth: false,
+    );
+    return _handleResponse(response);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ✅ MÉTODOS AUTENTICADOS (CON TOKEN)
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<Map<String, dynamic>> get(String endpoint) async {
     await _ensureValidToken();
@@ -484,9 +510,9 @@ class ApiClient {
     return _handleResponse(response);
   }
 
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
   // MULTIPART
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<Map<String, dynamic>> multipart(
     String method,
@@ -506,14 +532,6 @@ class ApiClient {
       final request = http.MultipartRequest(method, uri);
 
       request.headers.addAll(_getMultipartHeaders());
-
-      _log('📋 Headers multipart:');
-      request.headers.forEach((key, value) {
-        _log(
-          '   $key: ${key.toLowerCase().contains("auth") ? "[OCULTO]" : value}',
-        );
-      });
-
       request.fields.addAll(fields);
 
       for (final entry in files.entries) {
@@ -628,9 +646,9 @@ class ApiClient {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
   // UTILIDADES
-  // ════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _validarArchivosMultipart(Map<String, File> files) async {
     for (final entry in files.entries) {
@@ -712,10 +730,6 @@ class ApiClient {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // ✅ _handleResponse - MEJORADO CON LOGGING
-  // ════════════════════════════════════════════════════════════════════════
-
   Map<String, dynamic> _handleResponse(http.Response response) {
     final statusCode = response.statusCode;
     final bodyLength = response.body.length;
@@ -727,13 +741,12 @@ class ApiClient {
     _log('📏 Body Length: $bodyLength bytes');
 
     if (response.body.isNotEmpty) {
-      _log('📄 Response Body (completo):');
+      _log('📄 Response Body:');
       _log(response.body);
     } else {
       _log('📄 Response Body: (vacío)');
     }
 
-    // ✅ ÉXITO - Parsear JSON
     if (statusCode >= 200 && statusCode < 300) {
       _log('✅ Status $statusCode - ÉXITO');
 
@@ -746,25 +759,6 @@ class ApiClient {
         final parsed = json.decode(response.body) as Map<String, dynamic>;
         _log('✅ JSON parseado correctamente');
         _log('🔑 Keys disponibles: ${parsed.keys.join(", ")}');
-
-        if (parsed.containsKey('id')) {
-          _log('✅ Campo "id" presente: ${parsed['id']}');
-        } else {
-          _log('⚠️ ADVERTENCIA: Campo "id" AUSENTE en respuesta');
-          _log('💡 Estructura recibida: ${parsed.keys.toList()}');
-          _log(
-            '💡 Posible problema: Backend devuelve {"success": true} sin objeto',
-          );
-        }
-
-        if (parsed.containsKey('nombre')) {
-          _log('✅ Campo "nombre" presente: ${parsed['nombre']}');
-        }
-
-        if (parsed.containsKey('user_id')) {
-          _log('✅ Campo "user_id" presente: ${parsed['user_id']}');
-        }
-
         _log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         return parsed;
       } catch (e) {
@@ -774,7 +768,6 @@ class ApiClient {
       }
     }
 
-    // ❌ ERROR - Parsear error
     _log('❌ Status $statusCode - ERROR');
 
     Map<String, dynamic> error = {};

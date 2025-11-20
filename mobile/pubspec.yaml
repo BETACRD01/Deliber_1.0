@@ -85,3 +85,9 @@ flutter:
   assets:
     - assets/images/logo.gif
     - assets/icon/logo.png
+
+# ============================================
+# DEPENDENCY OVERRIDES (corrección win32)
+# ============================================
+dependency_overrides:
+  win32: 5.5.4

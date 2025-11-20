@@ -1,5 +1,3 @@
-// lib/services/auth_service.dart
-
 import '../apis/subapis/http_client.dart';
 import '../config/api_config.dart';
 import '../apis/helpers/api_validators.dart';
@@ -7,10 +5,9 @@ import '../apis/helpers/api_exception.dart';
 import 'dart:developer' as developer;
 
 // ============================================
-// 👤 MODELO: UserInfo - TOP-LEVEL (ANTES DE AuthService)
+// 👤 MODELO: UserInfo
 // ============================================
 
-/// Modelo simplificado para representar usuario
 class UserInfo {
   final String email;
   final List<String> roles;
@@ -18,21 +15,13 @@ class UserInfo {
 
   UserInfo({required this.email, required this.roles, this.userId});
 
-  /// Verifica si el usuario tiene un rol específico
   bool tieneRol(String rol) {
     return roles.any((r) => r.toUpperCase() == rol.toUpperCase());
   }
 
-  /// Verifica si es proveedor
   bool get esProveedor => tieneRol('PROVEEDOR');
-
-  /// Verifica si es repartidor
   bool get esRepartidor => tieneRol('REPARTIDOR');
-
-  /// Verifica si es administrador
   bool get esAdmin => tieneRol('ADMINISTRADOR');
-
-  /// Verifica si es usuario anónimo
   bool get esAnonimo => email.toLowerCase().contains('anonymous');
 
   @override
@@ -44,24 +33,13 @@ class UserInfo {
 // 🔐 AuthService
 // ============================================
 
-/// Servicio de Autenticación - SOLO lógica de autenticación
-/// ✅ CORREGIDO: Ahora extrae correctamente rol y userId de response['tokens']
 class AuthService {
-  // ============================================
-  // SINGLETON
-  // ============================================
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
   AuthService._internal();
 
-  // ============================================
-  // CLIENTE HTTP
-  // ============================================
   final _client = ApiClient();
 
-  // ============================================
-  // LOGGING
-  // ============================================
   void _log(String message, {Object? error, StackTrace? stackTrace}) {
     developer.log(
       message,
@@ -72,10 +50,10 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ REGISTRO (CORREGIDO)
+  // ✅ REGISTRO (CORREGIDO - USA postPublic)
   // ============================================
   Future<Map<String, dynamic>> register(Map<String, dynamic> data) async {
-    _log('🔐 Iniciando registro para: ${data['email']}');
+    _log('📝 Iniciando registro para: ${data['email']}');
 
     _normalizarDatosRegistro(data);
     _logDatosRegistro(data);
@@ -83,16 +61,15 @@ class AuthService {
     _validarCoincidenciaPasswords(data);
 
     try {
-      final response = await _client.post(ApiConfig.registro, data);
+      // ✅ CORREGIDO: Usar postPublic en lugar de post
+      final response = await _client.postPublic(ApiConfig.registro, data);
 
       if (response.containsKey('tokens')) {
         final tokens = response['tokens'];
 
-        // ✅ CORREGIDO: Extraer rol y userId de tokens, no del response principal
         final String? rol = tokens['rol'] as String?;
         final int? userId = tokens['user_id'] as int?;
 
-        // Si no viene en tokens, intentar buscar en response (compatibilidad)
         final String? rolFallback = response['rol'] as String?;
         final int? userIdFallback =
             (response['user_id'] ?? response['id'] ?? response['usuario_id'])
@@ -101,7 +78,6 @@ class AuthService {
         final String? rolFinal = rol ?? rolFallback;
         final int? userIdFinal = userId ?? userIdFallback;
 
-        // ✅ Guardar tokens con rol, userId y tokenLifetime
         await _client.saveTokens(
           tokens['access'],
           tokens['refresh'],
@@ -133,7 +109,7 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ LOGIN (CORREGIDO)
+  // ✅ LOGIN (CORREGIDO - USA postPublic)
   // ============================================
   Future<Map<String, dynamic>> login({
     required String email,
@@ -141,7 +117,8 @@ class AuthService {
   }) async {
     _log('🔐 Login para: $email');
 
-    final response = await _client.post(ApiConfig.login, {
+    // ✅ CORREGIDO: Usar postPublic en lugar de post
+    final response = await _client.postPublic(ApiConfig.login, {
       'identificador': email,
       'password': password,
     });
@@ -149,15 +126,12 @@ class AuthService {
     if (response.containsKey('tokens')) {
       final tokens = response['tokens'];
 
-      // ✅ CORREGIDO: Buscar rol y userId dentro de tokens
       final String? rol = tokens['rol'] as String?;
       final int? userId = tokens['user_id'] as int?;
 
-      // Si no viene en tokens, intentar desde response (compatibilidad)
       final String? rolFallback = response['rol'] as String?;
       final int? userIdFallback = response['user_id'] as int?;
 
-      // Intentar también desde response['usuario'] si existe
       final String? rolFinal;
       final int? userIdFinal;
 
@@ -170,7 +144,6 @@ class AuthService {
         userIdFinal = userId ?? userIdFallback;
       }
 
-      // ✅ Guardar tokens CON rol, userId y tokenLifetime
       await _client.saveTokens(
         tokens['access'],
         tokens['refresh'],
@@ -194,25 +167,24 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ LOGIN CON GOOGLE (CORREGIDO)
+  // ✅ LOGIN CON GOOGLE (CORREGIDO - USA postPublic)
   // ============================================
   Future<Map<String, dynamic>> loginWithGoogle({
     required String accessToken,
   }) async {
     _log('🔐 Login con Google');
 
-    final response = await _client.post(ApiConfig.googleLogin, {
+    // ✅ CORREGIDO: Usar postPublic en lugar de post
+    final response = await _client.postPublic(ApiConfig.googleLogin, {
       'access_token': accessToken,
     });
 
     if (response.containsKey('tokens')) {
       final tokens = response['tokens'];
 
-      // ✅ CORREGIDO: Buscar en tokens primero
       final String? rol = tokens['rol'] as String?;
       final int? userId = tokens['user_id'] as int?;
 
-      // Fallback a response si no está en tokens
       final String? rolFallback = response['rol'] as String?;
       final int? userIdFallback = response['user_id'] as int?;
 
@@ -293,6 +265,7 @@ class AuthService {
     });
   }
 
+  // ✅ CORREGIDO: Usar postPublic para recuperación de contraseña
   Future<Map<String, dynamic>> solicitarCodigoRecuperacion({
     required String email,
   }) async {
@@ -304,11 +277,12 @@ class AuthService {
         stackTrace: StackTrace.current,
       );
     }
-    return await _client.post(ApiConfig.solicitarCodigoRecuperacion, {
+    return await _client.postPublic(ApiConfig.solicitarCodigoRecuperacion, {
       'email': email,
     });
   }
 
+  // ✅ CORREGIDO: Usar postPublic
   Future<Map<String, dynamic>> verificarCodigoRecuperacion({
     required String email,
     required String codigo,
@@ -321,12 +295,13 @@ class AuthService {
         stackTrace: StackTrace.current,
       );
     }
-    return await _client.post(ApiConfig.verificarCodigoRecuperacion, {
+    return await _client.postPublic(ApiConfig.verificarCodigoRecuperacion, {
       'email': email,
       'codigo': codigo,
     });
   }
 
+  // ✅ CORREGIDO: Usar postPublic
   Future<Map<String, dynamic>> resetPasswordConCodigo({
     required String email,
     required String codigo,
@@ -350,7 +325,7 @@ class AuthService {
         stackTrace: StackTrace.current,
       );
     }
-    return await _client.post(ApiConfig.resetPasswordConCodigo, {
+    return await _client.postPublic(ApiConfig.resetPasswordConCodigo, {
       'email': email,
       'codigo': codigo,
       'password': password,
@@ -377,10 +352,9 @@ class AuthService {
   }
 
   // ============================================
-  // ✅ MÉTODOS PÚBLICOS PARA GESTIÓN DE ROL
+  // MÉTODOS PÚBLICOS PARA GESTIÓN DE ROL
   // ============================================
 
-  /// Obtiene el rol cacheado del usuario sin hacer petición al servidor
   String? getRolCacheado() {
     final rol = _client.userRole;
     if (rol == null) {
@@ -391,7 +365,6 @@ class AuthService {
     return rol;
   }
 
-  /// Obtiene el ID del usuario cacheado
   int? getUserIdCacheado() {
     final userId = _client.userId;
     if (userId == null) {
@@ -402,7 +375,6 @@ class AuthService {
     return userId;
   }
 
-  /// Verifica si el usuario actual es repartidor
   bool esRepartidor() {
     final rol = _client.userRole?.toUpperCase();
     final esRep = rol == ApiConfig.rolRepartidor;
@@ -410,7 +382,6 @@ class AuthService {
     return esRep;
   }
 
-  /// Verifica si el usuario actual es un usuario normal
   bool esUsuario() {
     final rol = _client.userRole?.toUpperCase();
     final esUs = rol == ApiConfig.rolUsuario;
@@ -418,15 +389,13 @@ class AuthService {
     return esUs;
   }
 
-  /// Verifica si el usuario actual es proveedor
   bool esProveedor() {
     final rol = _client.userRole?.toUpperCase();
     final esProv = rol == ApiConfig.rolProveedor;
-    _log('🏪 ¿Es proveedor? $esProv (rol: $rol)');
+    _log('🪙 ¿Es proveedor? $esProv (rol: $rol)');
     return esProv;
   }
 
-  /// Verifica si el usuario actual es administrador
   bool esAdministrador() {
     final rol = _client.userRole?.toUpperCase();
     final esAdmin = rol == ApiConfig.rolAdministrador;
@@ -434,7 +403,6 @@ class AuthService {
     return esAdmin;
   }
 
-  /// Verifica si el rol cacheado coincide con el esperado
   bool tieneRol(String rolEsperado) {
     final rol = _client.userRole?.toUpperCase();
     final coincide = rol == rolEsperado.toUpperCase();
@@ -442,11 +410,10 @@ class AuthService {
     return coincide;
   }
 
-  /// Imprime información de debug del estado actual
   void imprimirEstadoAuth() {
-    _log('╔════════════════════════════════════════════════════════════╗');
+    _log('╔═══════════════════════════════════════════════════════════╗');
     _log('📊 ESTADO DE AUTENTICACIÓN');
-    _log('╟────────────────────────────────────────────────────────────╣');
+    _log('╟───────────────────────────────────────────────────────────╣');
     _log('🔓 Autenticado: ${_client.isAuthenticated}');
     _log('👤 Rol cacheado: ${_client.userRole ?? "null"}');
     _log('🆔 User ID: ${_client.userId ?? "null"}');
@@ -462,46 +429,32 @@ class AuthService {
       }
     }
 
-    _log('╚════════════════════════════════════════════════════════════╝');
+    _log('╚═══════════════════════════════════════════════════════════╝');
   }
 
-  // ============================================
-  // ✅ GETTER USER - Para compatibilidad con formularios
-  // ============================================
-
-  /// Obtiene objeto User simplificado para verificar estado
   UserInfo? get user {
     if (!isAuthenticated) return null;
 
-    // Obtener datos cacheados
     final rol = getRolCacheado();
     final userId = getUserIdCacheado();
 
-    // Si no hay rol ni datos, retornar null
     if (rol == null) return null;
 
     return UserInfo(
-      email:
-          'usuario@deliber.com', // Email genérico (no se guarda en ApiClient)
+      email: 'usuario@deliber.com',
       roles: [rol],
       userId: userId,
     );
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // 🎭 GESTIÓN DE ROLES MÚLTIPLES
-  // ════════════════════════════════════════════════════════════════════════
+  // ============================================
+  // GESTIÓN DE ROLES MÚLTIPLES
+  // ============================================
 
-  /// Obtiene los roles disponibles del usuario
   Future<Map<String, dynamic>> obtenerRolesDisponibles() async {
     return await _client.get(ApiConfig.usuariosMisRoles);
   }
 
-  /// Cambia el rol activo del usuario
-  ///
-  /// [nuevoRol] - Rol a activar (USUARIO, PROVEEDOR, REPARTIDOR)
-  ///
-  /// Retorna la respuesta del backend con los nuevos tokens
   Future<Map<String, dynamic>> cambiarRolActivo(String nuevoRol) async {
     _log('🔄 Cambiando rol activo a: $nuevoRol');
 
@@ -509,7 +462,6 @@ class AuthService {
       'rol': nuevoRol.toUpperCase(),
     });
 
-    // Actualizar tokens con el nuevo rol
     if (response.containsKey('tokens')) {
       final tokens = response['tokens'];
 
@@ -531,6 +483,7 @@ class AuthService {
   // ============================================
   // HELPERS PRIVADOS PARA REGISTRO
   // ============================================
+  
   void _normalizarDatosRegistro(Map<String, dynamic> data) {
     if (data.containsKey('email')) {
       data['email'] = data['email'].toString().trim().toLowerCase();
@@ -638,6 +591,7 @@ class AuthService {
   // ============================================
   // MÉTODOS ESTÁTICOS DE UTILIDAD
   // ============================================
+  
   static String formatearTiempoEspera(int segundos) {
     final duracion = Duration(seconds: segundos);
     final minutos = duracion.inMinutes;
@@ -653,6 +607,7 @@ class AuthService {
   // ============================================
   // MÉTODOS PÚBLICOS DE UTILIDAD
   // ============================================
+  
   Future<bool> hasStoredTokens() async {
     return await _client.hasStoredTokens();
   }
@@ -660,7 +615,6 @@ class AuthService {
   Future<void> loadTokens() async {
     await _client.loadTokens();
 
-    // Después de cargar, verificar el estado
     if (_client.userRole == null) {
       _log('⚠️ ADVERTENCIA: Tokens cargados pero sin rol');
     } else {

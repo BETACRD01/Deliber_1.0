@@ -1,10 +1,8 @@
-// lib/screens/auth/forms/registro_usuario_form.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import '../../../services/auth_service.dart';
 import '../../../apis/helpers/api_exception.dart';
-import '../../pantalla_router.dart';
 
 class RegistroUsuarioForm extends StatefulWidget {
   const RegistroUsuarioForm({super.key});
@@ -31,6 +29,11 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
   bool _aceptaTerminos = false;
   DateTime? _fechaNacimiento;
   String? _error;
+
+  // Errores específicos por campo
+  String? _usernameError;
+  String? _emailError;
+  String? _celularError;
 
   static const Color _azulPrincipal = Color(0xFF4FC3F7);
   static const Color _azulOscuro = Color(0xFF0288D1);
@@ -99,6 +102,14 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
   }
 
   Future<void> _registrar() async {
+    // ✅ Limpiar errores previos
+    setState(() {
+      _error = null;
+      _usernameError = null;
+      _emailError = null;
+      _celularError = null;
+    });
+
     // Validar formulario
     if (!_formKey.currentState!.validate()) {
       debugPrint('❌ Formulario no válido');
@@ -122,7 +133,7 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
       return;
     }
 
-    // ✅ VALIDAR CONTRASEÑAS ANTES DE ENVIAR
+    // Validar contraseñas
     final password = _passwordController.text.trim();
     final password2 = _confirmarPasswordController.text.trim();
 
@@ -136,13 +147,10 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
       return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() => _loading = true);
 
     try {
-      // ✅ CONSTRUIR DATOS CON VALORES YA VALIDADOS
+      // Construir datos
       final data = {
         'first_name': _nombreController.text.trim(),
         'last_name': _apellidoController.text.trim(),
@@ -153,57 +161,165 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
         'password': password,
         'password2': password2,
         'terminos_aceptados': _aceptaTerminos,
-        'rol': 'USUARIO', // ⭐ ROL: Acceso completo inmediato
+        'rol': 'USUARIO',
       };
 
-      // 🐛 DEBUG
       debugPrint('📦 ============ REGISTRO USUARIO ============');
-      debugPrint('Rol: USUARIO (acceso completo inmediato)');
-      data.forEach((key, value) {
-        if (key != 'password' && key != 'password2') {
-          debugPrint('$key: "$value"');
-        } else {
-          debugPrint('$key: [${value.toString().length} caracteres]');
-        }
-      });
-      debugPrint('===========================================');
+      debugPrint('📤 Enviando registro al backend...');
 
-      await _api.register(data);
+      // ✅ ESPERAR LA RESPUESTA COMPLETA
+      final response = await _api.register(data);
 
-      if (mounted) {
+      debugPrint('✅ Respuesta recibida del backend');
+      debugPrint('   Type: ${response.runtimeType}');
+      debugPrint('   Keys: ${response.keys.join(", ")}');
+      debugPrint('   Full response: $response');
+
+      if (!mounted) return;
+
+      // ✅ VERIFICAR SI EL REGISTRO FUE EXITOSO
+      // El backend puede retornar diferentes estructuras
+      final exitoso = response.containsKey('tokens') || 
+                      response.containsKey('access') ||
+                      response.containsKey('message');
+
+      if (exitoso) {
+        debugPrint('✅ REGISTRO EXITOSO - Cerrando formulario...');
+
+        if (!mounted) return;
+
+        // ✅ CERRAR INMEDIATAMENTE EL FORMULARIO DE REGISTRO
+        Navigator.pop(context);
+
+        // ✅ MOSTRAR SNACKBAR DESPUÉS DE CERRAR
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Row(
               children: [
                 Icon(Icons.check_circle_rounded, color: Colors.white),
                 SizedBox(width: 10),
-                Text('¡Registro exitoso! Bienvenido'),
+                Expanded(
+                  child: Text(
+                    '¡Registro exitoso! Ya puedes iniciar sesión',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
               ],
             ),
             backgroundColor: _verde,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
           ),
         );
 
-        // ✅ CORRECCIÓN: Usar Router para detectar rol automáticamente
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const PantallaRouter()),
-          (route) => false, // Limpiar stack completo
+      } else {
+        // Si no tiene tokens ni mensaje de éxito, algo salió mal
+        throw ApiException(
+          statusCode: 500,
+          message: 'Error inesperado en el registro',
+          errors: {'detail': 'Respuesta del servidor no reconocida'},
+          stackTrace: StackTrace.current,
         );
       }
+
     } on ApiException catch (e) {
-      debugPrint('❌ ApiException: ${e.message}');
-      if (mounted) setState(() => _error = e.message);
-    } catch (e) {
+      debugPrint('❌ ========== ERROR CAPTURADO ==========');
+      debugPrint('   Status Code: ${e.statusCode}');
+      debugPrint('   Message: ${e.message}');
+      debugPrint('   Errors Map: ${e.errors}');
+      debugPrint('   Is Validation Error: ${e.isValidationError}');
+      debugPrint('==========================================');
+
+      if (!mounted) return;
+
+      // Manejar errores de validación (400)
+      if (e.isValidationError && e.errors.isNotEmpty) {
+        debugPrint('✅ Procesando errores de validación...');
+        
+        setState(() {
+          // ✅ Extraer errores específicos de cada campo
+          _usernameError = _extraerMensajeError(e.errors['username']);
+          _emailError = _extraerMensajeError(e.errors['email']);
+          _celularError = _extraerMensajeError(e.errors['celular']);
+          
+          debugPrint('🔴 Username Error: $_usernameError');
+          debugPrint('🔴 Email Error: $_emailError');
+          debugPrint('🔴 Celular Error: $_celularError');
+          
+          // Si hay errores de campos específicos, mostrar mensaje general
+          if (_usernameError != null || _emailError != null || _celularError != null) {
+            _error = 'Corrige los campos marcados en rojo';
+          } else {
+            // Error 400 sin campos específicos
+            _error = e.message.isNotEmpty ? e.message : 'Error en los datos ingresados';
+          }
+        });
+
+        // ✅ MOSTRAR SNACKBAR con el primer error encontrado
+        String mensajeSnackbar = 'Corrige los errores en el formulario';
+        if (_usernameError != null) {
+          mensajeSnackbar = _usernameError!;
+        } else if (_emailError != null) {
+          mensajeSnackbar = _emailError!;
+        } else if (_celularError != null) {
+          mensajeSnackbar = _celularError!;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(child: Text(mensajeSnackbar)),
+              ],
+            ),
+            backgroundColor: Colors.red[700],
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+
+      } else {
+        // Otros errores (401, 500, etc.)
+        setState(() => _error = e.getUserFriendlyMessage());
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.getUserFriendlyMessage()),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+    } catch (e, stack) {
       debugPrint('❌ Error inesperado: $e');
-      if (mounted) setState(() => _error = 'Error de conexión');
+      debugPrint('Stack: $stack');
+      
+      if (mounted) {
+        setState(() => _error = 'Error de conexión con el servidor');
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error de conexión con el servidor'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -420,6 +536,7 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
             label: 'Usuario',
             icono: Icons.alternate_email_rounded,
             validator: (v) => v!.isEmpty ? 'Requerido' : null,
+            errorText: _usernameError,
           ),
           const SizedBox(height: 14),
           _buildCampo(
@@ -432,6 +549,7 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
               if (!v.contains('@')) return 'Email inválido';
               return null;
             },
+            errorText: _emailError,
           ),
           const SizedBox(height: 14),
           _buildCampo(
@@ -444,10 +562,11 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
             validator: (v) {
               if (v!.isEmpty) return 'Requerido';
               if (!v.startsWith('09') || v.length != 10) {
-                return 'Formato: ¡';
+                return 'Formato: 09XXXXXXXX';
               }
               return null;
             },
+            errorText: _celularError,
           ),
           const SizedBox(height: 14),
           _buildCampoFecha(),
@@ -495,6 +614,7 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
     TextInputType tipo = TextInputType.text,
     int? maxLength,
     String? Function(String?)? validator,
+    String? errorText,
   }) {
     return TextFormField(
       controller: controller,
@@ -508,6 +628,7 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
         hintText: hint,
         prefixIcon: Icon(icono, color: _azulOscuro, size: 22),
         counterText: '',
+        errorText: errorText,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,
@@ -515,15 +636,24 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
+          borderSide: BorderSide(
+            color: errorText != null ? Colors.red : Colors.grey[300]!,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _azulPrincipal, width: 2),
+          borderSide: BorderSide(
+            color: errorText != null ? Colors.red : _azulPrincipal,
+            width: 2,
+          ),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.red),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
         filled: true,
         fillColor: Colors.white,
@@ -751,5 +881,22 @@ class _RegistroUsuarioFormState extends State<RegistroUsuarioForm> {
               ),
       ),
     );
+  }
+
+  // ✅ HELPER: Extraer mensaje de error de diferentes formatos
+  String? _extraerMensajeError(dynamic error) {
+    if (error == null) return null;
+    
+    // Si es una lista ["mensaje"]
+    if (error is List && error.isNotEmpty) {
+      return error[0].toString();
+    }
+    
+    // Si es un string directo
+    if (error is String) {
+      return error;
+    }
+    
+    return null;
   }
 }

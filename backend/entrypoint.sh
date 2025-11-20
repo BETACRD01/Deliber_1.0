@@ -131,10 +131,19 @@ EOF
         
     celery_beat)
         log "Iniciando Celery Beat..."
-        rm -f /app/celerybeat-schedule
+        
+        # Limpiar archivos de schedule anteriores (soporta tanto archivos como directorios)
+        if [ -e /app/celerybeat-schedule ]; then
+            rm -rf /app/celerybeat-schedule
+            info "✓ Limpiado schedule anterior"
+        fi
+        
+        # Crear directorio para datos de celery beat si no existe
+        mkdir -p /app/celerybeat-data
         
         exec celery -A settings beat \
             --loglevel=info \
+            --schedule=/app/celerybeat-data/celerybeat-schedule.db \
             --scheduler django_celery_beat.schedulers:DatabaseScheduler
         ;;
         

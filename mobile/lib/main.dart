@@ -32,6 +32,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 👇 AGREGA SOLO ESTA LÍNEA AQUÍ:
+  ApiConfig.setManualIp('10.0.2.2');
+  // 👆 Esto conecta el emulador directo a tu PC
   // ============================================
   // PASO 1: Inicializar Firebase
   // ============================================

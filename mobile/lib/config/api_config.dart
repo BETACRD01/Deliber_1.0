@@ -19,7 +19,8 @@ class ApiConfig {
 
   // 🏢 RED INSTITUCIONAL
   static const String redInstitucionalPrefix = '172.16';
-  static const String ipServidorInstitucional = '172.16.60.5';
+  static const String ipServidorInstitucional = '172.16.58.183';
+
 
   // 📱 HOTSPOT
   static const String redHotspotPrefix = '192.168.137';
@@ -591,9 +592,9 @@ class ApiConfig {
   // BLOQUE 8: ⏱️ CONFIGURACIÓN DE TIMEOUTS
   // ════════════════════════════════════════════════════════════════════════
 
-  static const Duration connectTimeout = Duration(seconds: 30);
-  static const Duration receiveTimeout = Duration(seconds: 30);
-  static const Duration sendTimeout = Duration(seconds: 30);
+  static const Duration connectTimeout = Duration(seconds: 60);
+  static const Duration receiveTimeout = Duration(seconds: 60);
+  static const Duration sendTimeout = Duration(seconds: 60);
 
   // ════════════════════════════════════════════════════════════════════════
   // BLOQUE 9: 📝 CONFIGURACIÓN DE RETRY
